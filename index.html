@@ -2,7 +2,9 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>🔒 Секретный чат</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
@@ -20,7 +22,19 @@
       --border: #334155;
       --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    html, body {
+      height: 100%;
+      touch-action: manipulation;
+    }
+    
     body {
       font-family: 'Inter', sans-serif;
       background: var(--dark);
@@ -28,8 +42,12 @@
       display: flex;
       flex-direction: column;
       min-height: 100vh;
-      padding: 8px;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      overscroll-behavior: contain;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
+    
     #chat-container {
       background: var(--secondary);
       border-radius: 16px;
@@ -38,7 +56,9 @@
       flex: 1;
       display: flex;
       flex-direction: column;
+      max-height: 100vh;
     }
+    
     /* Шапка с состоянием */
     #header {
       padding: 12px 16px;
@@ -47,25 +67,33 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
     }
+    
     .status-indicator {
       display: flex;
       align-items: center;
       gap: 8px;
     }
+    
     .status-dot {
       width: 10px;
       height: 10px;
       border-radius: 50%;
       background: var(--warning);
     }
+    
     .status-dot.connected {
       background: var(--success);
     }
+    
     .status-dot.secure {
       background: var(--success);
       box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
     }
+    
     /* Панель управления */
     #control-panel {
       padding: 12px;
@@ -74,32 +102,45 @@
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
+      align-items: center;
     }
+    
     .control-group {
       display: flex;
       gap: 8px;
       flex: 1;
       min-width: 200px;
     }
-    /* Панель ключей */
+    
+    /* Панель ключей - мобильная версия */
     #key-panel {
       padding: 12px;
       background: rgba(99, 102, 241, 0.1);
       border-bottom: 1px solid var(--primary);
       display: none;
+      flex-direction: column;
+      gap: 10px;
     }
+    
     #key-input {
-      flex: 1;
-      padding: 10px 12px;
-      border-radius: 8px;
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
       border: 1px solid var(--border);
       background: #1e293b;
       color: var(--light);
       font-family: monospace;
       font-size: 14px;
-      min-width: 150px;
+      min-height: 48px;
     }
-    /* Сообщения */
+    
+    .key-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    /* Сообщения - оптимизация для мобильных */
     #messages {
       flex: 1;
       overflow-y: auto;
@@ -107,238 +148,481 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
+      -webkit-overflow-scrolling: touch;
     }
+    
     .msg {
       max-width: 85%;
-      padding: 14px;
-      border-radius: 16px;
+      padding: 16px;
+      border-radius: 18px;
       position: relative;
-      animation: fadeIn 0.3s ease;
+      animation: fadeIn 0.2s ease;
+      word-break: break-word;
+      line-height: 1.5;
     }
+    
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
+      from { opacity: 0; transform: translateY(5px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    
     .my { 
       background: var(--primary); 
       margin-left: auto;
       border-bottom-right-radius: 4px;
     }
+    
     .theirs { 
       background: var(--dark); 
       border-bottom-left-radius: 4px;
     }
+    
     .sender-name {
       font-weight: 600;
-      font-size: 14px;
+      font-size: 15px;
       margin-bottom: 4px;
       display: block;
     }
+    
     .my .sender-name { color: #dbeafe; }
     .theirs .sender-name { color: #cbd5e1; }
+    
     .message-content {
-      line-height: 1.5;
-      word-break: break-word;
+      line-height: 1.6;
+      font-size: 16px;
     }
+    
     .message-time {
-      font-size: 12px;
+      font-size: 13px;
       color: var(--gray);
       margin-top: 4px;
       display: block;
       text-align: right;
     }
+    
     .my .message-time { color: #93c5fd; }
     .theirs .message-time { color: #94a3b8; }
+    
     .encrypted-badge {
       position: absolute;
-      top: -8px;
-      right: -8px;
-      width: 18px;
-      height: 18px;
+      top: 8px;
+      right: 8px;
+      width: 20px;
+      height: 20px;
       background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ffffff'%3E%3Cpath d='M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z'/%3E%3C/svg%3E") no-repeat center;
       background-size: contain;
     }
-    /* Панель ввода */
+    
+    /* Панель ввода - мобильная оптимизация */
     #input-area {
       padding: 12px;
       background: var(--dark);
       border-top: 1px solid var(--border);
       display: flex;
       gap: 8px;
+      position: sticky;
+      bottom: 0;
+      z-index: 20;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
     }
+    
     #msg-input {
       flex: 1;
-      padding: 12px 16px;
-      border-radius: 12px;
+      padding: 14px 16px;
+      border-radius: 14px;
       border: 1px solid var(--border);
       background: #1e293b;
       color: var(--light);
       font-family: 'Inter', sans-serif;
       font-size: 16px;
+      min-height: 48px;
+      max-height: 100px;
+      resize: none;
+      overflow-y: auto;
     }
+    
+    #msg-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+    }
+    
     #send-btn {
-      padding: 0 20px;
+      min-width: 80px;
+      padding: 14px;
       background: var(--primary);
       color: white;
       border: none;
-      border-radius: 12px;
+      border-radius: 14px;
       font-weight: 600;
+      font-size: 16px;
       cursor: pointer;
       transition: all 0.2s;
+      min-height: 48px;
     }
+    
     #send-btn:hover {
       background: var(--primary-dark);
     }
+    
     #send-btn:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
-    /* Панель файлов */
+    
+    /* Панель файлов - мобильная версия */
     #file-panel {
       display: flex;
-      gap: 12px;
+      flex-direction: column;
+      gap: 10px;
       padding: 12px;
       background: rgba(30, 41, 59, 0.5);
       border-top: 1px solid var(--border);
     }
+    
     .file-btn {
-      flex: 1;
-      padding: 10px;
-      border-radius: 10px;
+      width: 100%;
+      padding: 16px;
+      border-radius: 14px;
       border: 1px dashed var(--border);
       background: transparent;
       color: var(--gray);
       text-align: center;
       cursor: pointer;
       transition: all 0.2s;
+      font-size: 16px;
+      min-height: 56px;
     }
+    
     .file-btn:hover {
       background: rgba(99, 102, 241, 0.1);
       color: var(--primary);
       border-color: var(--primary);
     }
+    
     /* Системные уведомления */
     .system-notification {
       position: fixed;
-      top: 16px;
+      top: max(16px, env(safe-area-inset-top));
       right: 16px;
-      max-width: 300px;
-      padding: 12px 16px;
+      max-width: calc(100% - 32px);
+      padding: 14px 16px;
       border-radius: 12px;
       color: white;
-      font-size: 14px;
+      font-size: 15px;
       z-index: 1000;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
       transform: translateY(-100px);
       opacity: 0;
       transition: all 0.3s ease;
+      text-align: center;
     }
+    
     .system-notification.show {
       transform: translateY(0);
       opacity: 1;
     }
+    
     .system-notification.secure {
-      background: rgba(16, 185, 129, 0.9);
+      background: rgba(16, 185, 129, 0.95);
     }
+    
     .system-notification.warning {
-      background: rgba(245, 158, 11, 0.9);
+      background: rgba(245, 158, 11, 0.95);
     }
+    
     .system-notification.danger {
-      background: rgba(239, 68, 68, 0.9);
+      background: rgba(239, 68, 68, 0.95);
     }
-    /* Кнопки */
+    
+    /* Кнопки - мобильная оптимизация */
     .btn {
-      padding: 10px 16px;
-      border-radius: 10px;
+      padding: 14px 16px;
+      border-radius: 14px;
       border: none;
       font-family: 'Inter', sans-serif;
       font-weight: 500;
+      font-size: 16px;
       cursor: pointer;
       transition: all 0.2s;
-      white-space: nowrap;
+      min-height: 52px;
+      touch-action: manipulation;
     }
+    
     .btn-primary {
       background: var(--primary);
       color: white;
     }
+    
     .btn-primary:hover {
       background: var(--primary-dark);
     }
+    
     .btn-secondary {
       background: transparent;
       border: 1px solid var(--border);
       color: var(--light);
     }
+    
     .btn-secondary:hover {
       background: rgba(255,255,255,0.05);
     }
+    
     .btn-danger {
       background: var(--danger);
       color: white;
     }
+    
     .btn-danger:hover {
       opacity: 0.9;
     }
+    
     .btn-warning {
       background: var(--warning);
       color: var(--dark);
     }
+    
     .btn-warning:hover {
       opacity: 0.9;
     }
-    /* Меню */
+    
+    /* Меню - мобильная версия */
     #menu-panel {
       position: fixed;
       top: 0;
-      right: -300px;
-      width: 280px;
+      right: -100%;
+      width: 100%;
       height: 100vh;
+      max-width: 320px;
       background: var(--secondary);
       border-left: 1px solid var(--border);
-      padding: 20px;
-      transition: right 0.3s ease;
+      padding: max(20px, env(safe-area-inset-top)) 20px env(safe-area-inset-bottom) 20px;
+      transition: right 0.3s ease, transform 0.3s ease;
       z-index: 100;
       box-shadow: -2px 0 10px rgba(0,0,0,0.3);
+      touch-action: pan-y;
     }
+    
     #menu-panel.open {
       right: 0;
+      transform: translateX(0);
     }
+    
+    #menu-panel::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      z-index: -1;
+    }
+    
+    #menu-panel.open::before {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    #menu-close {
+      position: absolute;
+      top: max(12px, env(safe-area-inset-top));
+      right: 16px;
+      background: rgba(0,0,0,0.3);
+      border: none;
+      color: white;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      font-size: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    
     .menu-item {
-      padding: 12px 16px;
-      border-radius: 8px;
-      margin: 8px 0;
+      padding: 16px;
+      border-radius: 12px;
+      margin: 10px 0;
       cursor: pointer;
       transition: all 0.2s;
+      font-size: 16px;
+      touch-action: manipulation;
     }
+    
     .menu-item:hover {
       background: rgba(99, 102, 241, 0.1);
     }
+    
     .menu-item.danger {
       background: rgba(239, 68, 68, 0.1);
       color: var(--danger);
     }
+    
     .menu-item.danger:hover {
       background: rgba(239, 68, 68, 0.2);
     }
-    /* Адаптивность */
-    @media (max-width: 480px) {
+    
+    /* Bottom Navigation для мобильных */
+    .bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--dark);
+      border-top: 1px solid var(--border);
+      padding: 8px 0 env(safe-area-inset-bottom) 0;
+      z-index: 30;
+    }
+    
+    .bottom-nav-buttons {
+      display: flex;
+      justify-content: space-around;
+      padding: 0 16px;
+    }
+    
+    .nav-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      background: transparent;
+      border: none;
+      color: var(--gray);
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 8px 0;
+      touch-action: manipulation;
+    }
+    
+    .nav-btn.active, .nav-btn:hover {
+      color: var(--primary);
+    }
+    
+    .nav-icon {
+      font-size: 24px;
+    }
+    
+    /* Состояние виртуальной клавиатуры */
+    body.keyboard-open #input-area {
+      position: relative;
+    }
+    
+    body.keyboard-open .bottom-nav {
+      display: none !important;
+    }
+    
+    /* Адаптивность для разных размеров экранов */
+    @media (max-width: 768px) {
       .control-group {
         min-width: 100%;
-      }
-      #input-area {
         flex-direction: column;
       }
-      #msg-input {
+      
+      #room-id {
         width: 100%;
       }
+      
+      #connect-btn {
+        width: 100%;
+      }
+      
+      #key-panel {
+        padding: 16px;
+      }
+      
+      #file-panel {
+        padding: 16px;
+      }
+      
+      .bottom-nav {
+        display: block;
+      }
+      
+      #menu-btn {
+        display: none;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      #header {
+        padding: 12px 12px;
+      }
+      
+      .status-indicator {
+        font-size: 14px;
+      }
+      
+      .control-group {
+        gap: 6px;
+      }
+      
+      .btn {
+        padding: 12px;
+        font-size: 15px;
+      }
+      
+      #msg-input {
+        font-size: 15px;
+        padding: 12px 14px;
+      }
+      
+      #send-btn {
+        min-width: 70px;
+        padding: 12px;
+        font-size: 15px;
+      }
+      
+      .msg {
+        padding: 14px;
+        font-size: 15px;
+      }
+      
+      .sender-name {
+        font-size: 14px;
+      }
+      
+      .message-time {
+        font-size: 12px;
+      }
+      
+      #key-input {
+        font-size: 13px;
+        padding: 12px;
+      }
+      
       .file-btn {
         padding: 14px;
+        font-size: 15px;
       }
-      #menu-panel {
-        width: 100%;
+      
+      .menu-item {
+        padding: 14px;
+        font-size: 15px;
       }
-      #key-input {
-        min-width: 100%;
+    }
+    
+    /* iOS specific fixes */
+    @supports (-webkit-touch-callout: none) {
+      input:focus, textarea:focus {
+        font-size: 16px !important;
+      }
+      
+      #msg-input {
+        font-size: 16px !important;
+      }
+    }
+    
+    /* Android specific fixes */
+    @media (hover: none) {
+      .btn:hover {
+        background: rgba(99, 102, 241, 0.15);
       }
     }
   </style>
@@ -370,8 +654,8 @@
   </div>
 
   <div id="key-panel">
-    <div class="control-group">
-      <input type="text" id="key-input" placeholder="AES-256 ключ (64 hex символа)" maxlength="64">
+    <input type="text" id="key-input" placeholder="AES-256 ключ (64 hex символа)" maxlength="64">
+    <div class="key-buttons">
       <button class="btn btn-warning" id="generate-key-btn">Сгенерировать ключ</button>
       <button class="btn btn-primary" id="activate-key-btn">Активировать</button>
     </div>
@@ -391,7 +675,7 @@
   </div>
 
   <div id="input-area" style="display: none;">
-    <input type="text" id="msg-input" placeholder="Введите сообщение..." autocomplete="off">
+    <textarea id="msg-input" placeholder="Введите сообщение..." autocomplete="off" rows="1"></textarea>
     <button id="send-btn" disabled>Отправить</button>
   </div>
 </div>
@@ -403,7 +687,8 @@
 
 <!-- Меню -->
 <div id="menu-panel">
-  <h3 style="margin-bottom: 20px; color: var(--light);">Меню</h3>
+  <button id="menu-close">✕</button>
+  <h3 style="margin-bottom: 20px; color: var(--light); font-size: 20px;">Меню</h3>
   <div class="menu-item" id="kill-chat-btn">
     🗑️ KILL-CHAT (полная очистка)
   </div>
@@ -417,10 +702,28 @@
     🔑 Статус шифрования: <span id="encryption-status">Не активно</span>
   </div>
   <div class="menu-item">
-    💻 Мой ID: <span id="client-id">${state.clientId.substring(0, 8)}...</span>
+    💻 Мой ID: <span id="client-id"></span>
   </div>
   <div class="menu-item">
     👤 Моё имя: <span id="self-name">-</span>
+  </div>
+</div>
+
+<!-- Bottom Navigation для мобильных -->
+<div class="bottom-nav">
+  <div class="bottom-nav-buttons">
+    <button class="nav-btn active">
+      <div class="nav-icon">💬</div>
+      <span>Чат</span>
+    </button>
+    <button class="nav-btn">
+      <div class="nav-icon">📁</div>
+      <span>Файлы</span>
+    </button>
+    <button class="nav-btn">
+      <div class="nav-icon">⚙️</div>
+      <span>Настройки</span>
+    </button>
   </div>
 </div>
 
@@ -437,7 +740,8 @@ const state = {
   participants: new Map(), // clientId -> name
   lastMessageTime: 0,
   sentMessages: new Set(),
-  messageHistory: []
+  messageHistory: [],
+  isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 };
 
 // === СПИСКИ ДЛЯ ГЕНЕРАЦИИ ИМЁН ===
@@ -465,6 +769,7 @@ const elements = {
   notification: document.getElementById('notification'),
   menuBtn: document.getElementById('menu-btn'),
   menuPanel: document.getElementById('menu-panel'),
+  menuClose: document.getElementById('menu-close'),
   killChatBtn: document.getElementById('kill-chat-btn'),
   participantsCount: document.getElementById('participants-count'),
   lastActivity: document.getElementById('last-activity'),
@@ -478,6 +783,88 @@ const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
   clientId: state.clientId,
   clean: true
 });
+
+// === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ МОБИЛЬНЫХ ===
+const mobileUtils = {
+  // Автоматическая высота поля ввода
+  adjustInputHeight: () => {
+    const input = elements.msgInput;
+    input.style.height = 'auto';
+    input.style.height = (input.scrollHeight) + 'px';
+  },
+  
+  // Обработка виртуальной клавиатуры
+  handleKeyboard: () => {
+    let keyboardOpen = false;
+    
+    // iOS keyboard
+    window.addEventListener('focusin', () => {
+      if (elements.msgInput === document.activeElement) {
+        keyboardOpen = true;
+        document.body.classList.add('keyboard-open');
+      }
+    });
+    
+    window.addEventListener('focusout', () => {
+      keyboardOpen = false;
+      setTimeout(() => {
+        if (!keyboardOpen) {
+          document.body.classList.remove('keyboard-open');
+        }
+      }, 300);
+    });
+    
+    // Android keyboard
+    window.visualViewport.addEventListener('resize', () => {
+      if (window.visualViewport.height < window.innerHeight - 100) {
+        keyboardOpen = true;
+        document.body.classList.add('keyboard-open');
+      } else {
+        keyboardOpen = false;
+        document.body.classList.remove('keyboard-open');
+      }
+    });
+  },
+  
+  // Предотвращение зума при фокусе на iOS
+  preventIosZoom: () => {
+    document.addEventListener('touchstart', function(event) {
+      if (event.touches.length > 1) {
+        event.preventDefault();
+      }
+    }, { passive: false });
+    
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function(event) {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) {
+        event.preventDefault();
+      }
+      lastTouchEnd = now;
+    }, { passive: false });
+  },
+  
+  // Оптимизация скролла для мобильных
+  optimizeScroll: () => {
+    let isScrolling = false;
+    
+    elements.messagesDiv.addEventListener('scroll', () => {
+      if (!isScrolling) {
+        requestAnimationFrame(() => {
+          isScrolling = false;
+        });
+        isScrolling = true;
+      }
+    }, { passive: true });
+  },
+  
+  // Вибрация при отправке сообщения
+  vibrate: () => {
+    if (navigator.vibrate) {
+      navigator.vibrate([10]);
+    }
+  }
+};
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 const utils = {
@@ -578,7 +965,11 @@ const utils = {
     
     msgDiv.innerHTML = html;
     elements.messagesDiv.appendChild(msgDiv);
-    elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
+    
+    // Прокручиваем к новому сообщению с небольшой задержкой для анимации
+    setTimeout(() => {
+      elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
+    }, 50);
     
     // Обновляем статистику
     elements.lastActivity.textContent = utils.formatTime(timestamp);
@@ -600,7 +991,10 @@ const utils = {
     `;
     
     elements.messagesDiv.appendChild(msgDiv);
-    elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
+    
+    setTimeout(() => {
+      elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
+    }, 50);
   },
   
   saveSession: () => {
@@ -924,8 +1318,14 @@ const chatUtils = {
       });
       
       elements.msgInput.value = '';
+      elements.msgInput.style.height = 'auto';
       state.lastMessageTime = timestamp;
       utils.saveSession();
+      
+      // Вибрация на мобильных устройствах
+      if (state.isMobile) {
+        mobileUtils.vibrate();
+      }
       
     } catch (e) {
       utils.showNotification('❌ Ошибка отправки сообщения', 'danger');
@@ -1060,7 +1460,23 @@ const init = () => {
   // Генерация уникального имени
   state.selfName = utils.generateUniqueName(state.clientId);
   elements.selfNameSpan.textContent = state.selfName;
-  elements.clientIdSpan.textContent = state.clientId.substring(0, 8) + '...';
+  elements.clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
+  
+  // Мобильные оптимизации
+  mobileUtils.handleKeyboard();
+  mobileUtils.preventIosZoom();
+  mobileUtils.optimizeScroll();
+  
+  // Слушатель изменения размера для оптимизации высоты
+  window.addEventListener('resize', () => {
+    if (elements.inputArea.style.display !== 'none') {
+      elements.inputArea.style.bottom = `${Math.max(0, window.innerHeight - document.documentElement.clientHeight)}px`;
+    }
+  });
+  
+  // Слушатель для поля ввода (мобильная оптимизация)
+  elements.msgInput.addEventListener('input', mobileUtils.adjustInputHeight);
+  elements.msgInput.addEventListener('focus', mobileUtils.adjustInputHeight);
   
   // Загрузка сессии
   if (!utils.loadSession()) {
@@ -1117,6 +1533,12 @@ document.addEventListener('DOMContentLoaded', () => {
   elements.generateKeyBtn.onclick = () => {
     elements.keyInput.value = cryptoUtils.generateRandomAESKey();
     utils.showNotification('✅ Ключ сгенерирован!', 'secure');
+    // Автоматическая активация на мобильных
+    if (state.isMobile) {
+      setTimeout(() => {
+        elements.activateKeyBtn.click();
+      }, 300);
+    }
   };
   
   // Активация ключа
@@ -1133,6 +1555,14 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.inputArea.style.display = 'flex';
       elements.sendBtn.disabled = false;
       elements.createFileBtn.style.display = 'block';
+      
+      // Скролл к полю ввода на мобильных
+      if (state.isMobile) {
+        setTimeout(() => {
+          elements.inputArea.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          elements.msgInput.focus();
+        }, 300);
+      }
       
       // Отправляем сообщение о готовности
       setTimeout(() => {
@@ -1166,12 +1596,19 @@ document.addEventListener('DOMContentLoaded', () => {
   elements.sendBtn.onclick = chatUtils.send;
   
   elements.msgInput.onkeypress = (e) => {
-    if (e.key === 'Enter') chatUtils.send();
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      chatUtils.send();
+    }
   };
   
   // Меню
   elements.menuBtn.onclick = () => {
-    elements.menuPanel.classList.toggle('open');
+    elements.menuPanel.classList.add('open');
+  };
+  
+  elements.menuClose.onclick = () => {
+    elements.menuPanel.classList.remove('open');
   };
   
   // KILL-CHAT
@@ -1186,10 +1623,32 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', (e) => {
     if (elements.menuPanel.classList.contains('open') && 
         !elements.menuPanel.contains(e.target) && 
-        e.target !== elements.menuBtn) {
+        e.target !== elements.menuBtn && 
+        e.target !== elements.menuClose) {
       elements.menuPanel.classList.remove('open');
     }
   });
+  
+  // Обработка back gesture на iOS
+  document.addEventListener('touchstart', function(event) {
+    if (event.touches.length === 1) {
+      const touch = event.touches[0];
+      this.touchStartX = touch.clientX;
+    }
+  }, { passive: true });
+  
+  document.addEventListener('touchend', function(event) {
+    if (event.changedTouches.length === 1 && this.touchStartX) {
+      const touch = event.changedTouches[0];
+      const diffX = touch.clientX - this.touchStartX;
+      
+      if (diffX > 50 && document.body.classList.contains('menu-open')) {
+        elements.menuPanel.classList.remove('open');
+      }
+      
+      delete this.touchStartX;
+    }
+  }, { passive: true });
 });
 
 // === ПРОВЕРКА СОСТОЯНИЯ КАЖДУЮ МИНУТУ ===
