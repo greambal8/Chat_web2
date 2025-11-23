@@ -3,586 +3,1363 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>🔒 Секретный чат</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --secondary: #1e293b;
+      --dark: #0f172a;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --light: #f1f5f9;
+      --gray: #64748b;
+      --border: #334155;
+      --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    html, body {
+      height: 100%;
+      touch-action: manipulation;
+    }
+    
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+      background: var(--dark);
+      color: var(--light);
+      display: flex;
+      flex-direction: column;
       min-height: 100vh;
       padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      overscroll-behavior: contain;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    #container {
-      max-width: 500px;
-      margin: 0 auto;
-      padding: 16px;
+    
+    #chat-container {
+      background: var(--secondary);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      max-height: 100vh;
     }
+    
     #header {
-      text-align: center;
-      padding: 16px 0;
-      margin-bottom: 16px;
-    }
-    h1 {
-      color: #6366f1;
-      font-size: 24px;
-      margin-bottom: 8px;
-    }
-    .status {
+      padding: 12px 16px;
       background: rgba(30, 41, 59, 0.8);
-      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--warning);
+    }
+    
+    .status-dot.connected {
+      background: var(--success);
+    }
+    
+    .status-dot.secure {
+      background: var(--success);
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+    }
+    
+    #control-panel {
+      padding: 12px;
+      background: var(--dark);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    
+    .control-group {
+      display: flex;
+      gap: 8px;
+      flex: 1;
+      min-width: 200px;
+    }
+    
+    #key-panel {
+      padding: 12px;
+      background: rgba(99, 102, 241, 0.1);
+      border-bottom: 1px solid var(--primary);
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+    }
+    
+    #key-input {
+      width: 100%;
+      padding: 14px;
       border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #1e293b;
+      color: var(--light);
+      font-family: monospace;
       font-size: 14px;
-      margin: 8px 0;
+      min-height: 48px;
     }
-    .status.secure {
-      background: rgba(16, 185, 129, 0.2);
-      border: 1px solid rgba(16, 185, 129, 0.3);
+    
+    .key-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
     }
+    
     #messages {
-      height: 60vh;
+      flex: 1;
       overflow-y: auto;
       padding: 16px;
-      background: #1e293b;
-      border-radius: 16px;
-      margin-bottom: 16px;
       display: flex;
       flex-direction: column;
       gap: 12px;
+      -webkit-overflow-scrolling: touch;
     }
-    .message {
+    
+    .msg {
       max-width: 85%;
-      padding: 12px 16px;
-      border-radius: 16px;
+      padding: 16px;
+      border-radius: 18px;
       position: relative;
+      animation: fadeIn 0.2s ease;
+      word-break: break-word;
+      line-height: 1.5;
     }
-    .own {
-      background: #4f46e5;
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .my { 
+      background: var(--primary); 
       margin-left: auto;
-      color: white;
+      border-bottom-right-radius: 4px;
     }
-    .other {
-      background: #334155;
-      color: white;
+    
+    .theirs { 
+      background: var(--dark); 
+      border-bottom-left-radius: 4px;
     }
-    .sender {
+    
+    .sender-name {
       font-weight: 600;
-      font-size: 14px;
+      font-size: 15px;
       margin-bottom: 4px;
       display: block;
     }
-    .time {
-      font-size: 12px;
-      color: #94a3b8;
-      text-align: right;
-      margin-top: 4px;
-      display: block;
-    }
-    #input-area {
-      display: flex;
-      gap: 8px;
-    }
-    #message-input {
-      flex: 1;
-      padding: 14px;
-      border-radius: 14px;
-      border: 1px solid #334155;
-      background: #334155;
-      color: white;
+    
+    .my .sender-name { color: #dbeafe; }
+    .theirs .sender-name { color: #cbd5e1; }
+    
+    .message-content {
+      line-height: 1.6;
       font-size: 16px;
     }
-    #send-button {
-      padding: 14px 24px;
-      background: #4f46e5;
+    
+    .message-time {
+      font-size: 13px;
+      color: var(--gray);
+      margin-top: 4px;
+      display: block;
+      text-align: right;
+    }
+    
+    .my .message-time { color: #93c5fd; }
+    .theirs .message-time { color: #94a3b8; }
+    
+    .encrypted-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 20px;
+      height: 20px;
+      background: url("image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ffffff'%3E%3Cpath d='M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z'/%3E%3C/svg%3E") no-repeat center;
+      background-size: contain;
+    }
+    
+    #input-area {
+      padding: 12px;
+      background: var(--dark);
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      position: sticky;
+      bottom: 0;
+      z-index: 20;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+    
+    #msg-input {
+      flex: 1;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: #1e293b;
+      color: var(--light);
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+      min-height: 48px;
+      max-height: 100px;
+      resize: none;
+      overflow-y: auto;
+    }
+    
+    #msg-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+    }
+    
+    #send-btn {
+      min-width: 80px;
+      padding: 14px;
+      background: var(--primary);
       color: white;
       border: none;
       border-radius: 14px;
       font-weight: 600;
       font-size: 16px;
       cursor: pointer;
+      transition: all 0.2s;
+      min-height: 48px;
     }
-    #send-button:disabled {
+    
+    #send-btn:hover {
+      background: var(--primary-dark);
+    }
+    
+    #send-btn:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
-    .controls {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-bottom: 16px;
-    }
-    .control-row {
-      display: flex;
-      gap: 8px;
-    }
-    input, button {
-      padding: 12px;
-      border-radius: 12px;
-      border: 1px solid #334155;
-      font-size: 16px;
-    }
-    input {
-      flex: 1;
-      background: #334155;
-      color: white;
-    }
-    button {
-      background: #4f46e5;
-      color: white;
-      cursor: pointer;
-    }
-    .system {
-      text-align: center;
-      color: #64748b;
-      font-style: italic;
-      padding: 8px 0;
-    }
-    .file-controls {
+    
+    #file-panel {
       display: flex;
       flex-direction: column;
       gap: 10px;
-      margin: 16px 0;
+      padding: 12px;
+      background: rgba(30, 41, 59, 0.5);
+      border-top: 1px solid var(--border);
     }
+    
     .file-btn {
-      padding: 14px;
-      background: #1e293b;
-      border: 1px dashed #4f46e5;
+      width: 100%;
+      padding: 16px;
       border-radius: 14px;
+      border: 1px dashed var(--border);
+      background: transparent;
+      color: var(--gray);
       text-align: center;
       cursor: pointer;
+      transition: all 0.2s;
+      font-size: 16px;
+      min-height: 56px;
     }
-    #file-input {
-      display: none;
+    
+    .file-btn:hover {
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--primary);
+      border-color: var(--primary);
     }
+    
+    .system-notification {
+      position: fixed;
+      top: max(16px, env(safe-area-inset-top));
+      right: 16px;
+      max-width: calc(100% - 32px);
+      padding: 14px 16px;
+      border-radius: 12px;
+      color: white;
+      font-size: 15px;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transform: translateY(-100px);
+      opacity: 0;
+      transition: all 0.3s ease;
+      text-align: center;
+    }
+    
+    .system-notification.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    
+    .system-notification.secure {
+      background: rgba(16, 185, 129, 0.95);
+    }
+    
+    .system-notification.warning {
+      background: rgba(245, 158, 11, 0.95);
+    }
+    
+    .system-notification.danger {
+      background: rgba(239, 68, 68, 0.95);
+    }
+    
+    .btn {
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: none;
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-height: 52px;
+      touch-action: manipulation;
+    }
+    
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+    
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--light);
+    }
+    
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+    
+    .btn-danger:hover {
+      opacity: 0.9;
+    }
+    
+    .btn-warning {
+      background: var(--warning);
+      color: var(--dark);
+    }
+    
+    .btn-warning:hover {
+      opacity: 0.9;
+    }
+    
+    #menu-panel {
+      position: fixed;
+      top: 0;
+      right: -100%;
+      width: 100%;
+      height: 100vh;
+      max-width: 320px;
+      background: var(--secondary);
+      border-left: 1px solid var(--border);
+      padding: max(20px, env(safe-area-inset-top)) 20px env(safe-area-inset-bottom) 20px;
+      transition: right 0.3s ease, transform 0.3s ease;
+      z-index: 100;
+      box-shadow: -2px 0 10px rgba(0,0,0,0.3);
+      touch-action: pan-y;
+    }
+    
+    #menu-panel.open {
+      right: 0;
+      transform: translateX(0);
+    }
+    
+    #menu-panel::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      z-index: -1;
+    }
+    
+    #menu-panel.open::before {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    #menu-close {
+      position: absolute;
+      top: max(12px, env(safe-area-inset-top));
+      right: 16px;
+      background: rgba(0,0,0,0.3);
+      border: none;
+      color: white;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      font-size: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    
+    .menu-item {
+      padding: 16px;
+      border-radius: 12px;
+      margin: 10px 0;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 16px;
+      touch-action: manipulation;
+    }
+    
+    .menu-item:hover {
+      background: rgba(99, 102, 241, 0.1);
+    }
+    
+    .menu-item.danger {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger);
+    }
+    
+    .menu-item.danger:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+    
+    .loading-indicator {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s linear infinite;
+      margin: 0 8px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    @media (max-width: 768px) {
+      .control-group {
+        min-width: 100%;
+        flex-direction: column;
+      }
+      
+      #room-id, #key-input, #msg-input {
+        width: 100%;
+      }
+      
+      #connect-btn, #generate-key-btn, #activate-key-btn, #send-btn {
+        width: 100%;
+      }
+      
+      #key-panel {
+        padding: 16px;
+      }
+      
+      #file-panel {
+        padding: 16px;
+      }
+    }
+    
     @media (max-width: 480px) {
-      #container {
-        padding: 8px;
+      #header {
+        padding: 12px 12px;
       }
-      #messages {
-        height: 50vh;
-      }
-      .message {
-        padding: 10px 12px;
-      }
-      input, button {
-        padding: 10px;
+      
+      .status-indicator {
         font-size: 14px;
       }
-      #send-button {
-        padding: 10px 16px;
+      
+      .control-group {
+        gap: 6px;
+      }
+      
+      .btn {
+        padding: 12px;
+        font-size: 15px;
+      }
+      
+      #msg-input {
+        font-size: 15px;
+        padding: 12px 14px;
+      }
+      
+      #send-btn {
+        min-width: 70px;
+        padding: 12px;
+        font-size: 15px;
+      }
+      
+      .msg {
+        padding: 14px;
+        font-size: 15px;
+      }
+      
+      .sender-name {
+        font-size: 14px;
+      }
+      
+      .message-time {
+        font-size: 12px;
+      }
+      
+      #key-input {
+        font-size: 13px;
+        padding: 12px;
+      }
+      
+      .file-btn {
+        padding: 14px;
+        font-size: 15px;
+      }
+      
+      .menu-item {
+        padding: 14px;
+        font-size: 15px;
+      }
+    }
+    
+    @supports (-webkit-touch-callout: none) {
+      input:focus, textarea:focus {
+        font-size: 16px !important;
+      }
+      
+      #msg-input {
+        font-size: 16px !important;
       }
     }
   </style>
 </head>
 <body>
-  <div id="container">
-    <div id="header">
-      <h1>🔒 Секретный чат</h1>
-      <div class="status" id="status">Готов к подключению</div>
-    </div>
 
-    <div class="controls">
-      <div class="control-row">
-        <input type="text" id="room-input" placeholder="ID комнаты" value="room-123">
-        <button id="connect-button">Подключиться</button>
-      </div>
-      
-      <div class="control-row" id="key-controls" style="display: none;">
-        <input type="text" id="key-input" placeholder="AES-256 ключ (64 hex)" maxlength="64">
-        <button id="generate-key">Сгенерировать</button>
-        <button id="activate-key">Активировать</button>
-      </div>
+<div id="chat-container">
+  <div id="header">
+    <div class="status-indicator">
+      <div class="status-dot" id="connection-status"></div>
+      <span id="status-text">Не подключён</span>
     </div>
-
-    <div class="file-controls" id="file-controls" style="display: none;">
-      <div class="file-btn" id="load-file-btn">📁 Загрузить Christmas.by</div>
-      <div class="file-btn" id="create-file-btn">💾 Создать файл</div>
-    </div>
-
-    <div id="messages">
-      <!-- Сообщения будут здесь -->
-    </div>
-
-    <div id="input-area" style="display: none;">
-      <input type="text" id="message-input" placeholder="Введите сообщение..." autocomplete="off">
-      <button id="send-button" disabled>Отправить</button>
+    <div>
+      <button class="btn btn-secondary" id="menu-btn">☰</button>
     </div>
   </div>
 
-  <input type="file" id="file-input" accept=".by" style="display: none;">
+  <div id="control-panel">
+    <div class="control-group">
+      <input type="text" id="room-id" placeholder="ID комнаты" class="btn-secondary">
+      <button class="btn btn-primary" id="connect-btn">Подключиться</button>
+    </div>
+    <div class="control-group">
+      <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+        <input type="checkbox" id="persist-checkbox">
+        <span>Запомнить сессию</span>
+      </label>
+    </div>
+  </div>
 
-  <script>
-    // Глобальные переменные
-    let client = null;
-    let currentTopic = null;
-    let encryptionKey = null;
-    let isEncrypted = false;
-    let clientId = 'client-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
-    let participants = new Map(); // clientId -> name
-    let messageIds = new Set(); // Для отслеживания дубликатов
-    
-    // DOM элементы
-    const roomInput = document.getElementById('room-input');
-    const connectButton = document.getElementById('connect-button');
-    const keyControls = document.getElementById('key-controls');
-    const keyInput = document.getElementById('key-input');
-    const generateKeyBtn = document.getElementById('generate-key');
-    const activateKeyBtn = document.getElementById('activate-key');
-    const fileControls = document.getElementById('file-controls');
-    const loadFileBtn = document.getElementById('load-file-btn');
-    const createFileBtn = document.getElementById('create-file-btn');
-    const messagesDiv = document.getElementById('messages');
-    const inputArea = document.getElementById('input-area');
-    const messageInput = document.getElementById('message-input');
-    const sendButton = document.getElementById('send-button');
-    const statusDiv = document.getElementById('status');
-    const fileInput = document.getElementById('file-input');
-    
-    // Генерация случайного имени
-    function generateRandomName() {
-      const colors = ['Синий', 'Красный', 'Зеленый', 'Желтый', 'Фиолетовый', 'Оранжевый'];
-      const animals = ['Волк', 'Лиса', 'Сова', 'Тигр', 'Медведь', 'Орел'];
-      return `${colors[Math.floor(Math.random() * colors.length)]} ${animals[Math.floor(Math.random() * animals.length)]}`;
+  <div id="key-panel">
+    <input type="text" id="key-input" placeholder="AES-256 ключ (64 hex символа)" maxlength="64">
+    <div class="key-buttons">
+      <button class="btn btn-warning" id="generate-key-btn">Сгенерировать ключ</button>
+      <button class="btn btn-primary" id="activate-key-btn">Активировать</button>
+    </div>
+  </div>
+
+  <div id="file-panel">
+    <div class="file-btn" id="load-file-btn">
+      📁 Загрузить Christmas.by
+    </div>
+    <div class="file-btn" id="create-file-btn" style="display: none;">
+      💾 Создать файл
+    </div>
+  </div>
+
+  <div id="messages">
+    <!-- Сообщения будут здесь -->
+  </div>
+
+  <div id="input-area" style="display: none;">
+    <textarea id="msg-input" placeholder="Введите сообщение..." autocomplete="off" rows="1"></textarea>
+    <button id="send-btn" disabled>Отправить</button>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".by" style="display: none;">
+
+<div class="system-notification" id="notification"></div>
+
+<div id="menu-panel">
+  <button id="menu-close">✕</button>
+  <h3 style="margin-bottom: 20px; color: var(--light); font-size: 20px;">Меню</h3>
+  <div class="menu-item" id="kill-chat-btn">
+    🗑️ KILL-CHAT (полная очистка)
+  </div>
+  <div class="menu-item">
+    📋 Статистика участников: <span id="participants-count">0</span>
+  </div>
+  <div class="menu-item">
+    ⏰ Последняя активность: <span id="last-activity">-</span>
+  </div>
+  <div class="menu-item">
+    🔑 Статус шифрования: <span id="encryption-status">Не активно</span>
+  </div>
+  <div class="menu-item">
+    💻 Мой ID: <span id="client-id"></span>
+  </div>
+  <div class="menu-item">
+    👤 Моё имя: <span id="self-name">-</span>
+  </div>
+</div>
+
+<script>
+// === ГЛОБАЛЬНОЕ СОСТОЯНИЕ ===
+const state = {
+  currentTopic: null,
+  aesKey: null,
+  isConnected: false,
+  isKeySet: false,
+  isSecureConnection: false,
+  clientId: 'client-' + Math.random().toString(36).substring(2, 10),
+  selfName: '',
+  participants: new Map(), // clientId -> name
+  lastMessageTime: 0,
+  sentMessages: new Set(),
+  messageHistory: [],
+  isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+  mqttClient: null,
+  messageIds: new Set() // Для отслеживания дубликатов
+};
+
+// === СПИСКИ ДЛЯ ГЕНЕРАЦИИ ИМЁН ===
+const nameColors = ['Синий', 'Красный', 'Зелёный', 'Жёлтый', 'Фиолетовый', 'Оранжевый', 'Розовый', 'Голубой', 'Серый', 'Бирюзовый', 'Индиго', 'Бордовый', 'Бронзовый', 'Серебряный', 'Золотой', 'Хаки', 'Мятный', 'Лавандовый', 'Бежевый', 'Коричневый'];
+const nameAnimals = ['Волк', 'Лиса', 'Сова', 'Ястреб', 'Тигр', 'Медведь', 'Леопард', 'Орёл', 'Дракон', 'Феникс', 'Лев', 'Змея', 'Кот', 'Пёс', 'Кролик', 'Лошадь', 'Слон', 'Обезьяна', 'Панда', 'Крокодил', 'Черепаха', 'Кит', 'Акула', 'Осьминог', 'Сокол', 'Ворон', 'Лось', 'Ёж'];
+
+// === DOM ЭЛЕМЕНТЫ ===
+const roomInput = document.getElementById('room-id');
+const connectBtn = document.getElementById('connect-btn');
+const persistCheckbox = document.getElementById('persist-checkbox');
+const keyPanel = document.getElementById('key-panel');
+const keyInput = document.getElementById('key-input');
+const generateKeyBtn = document.getElementById('generate-key-btn');
+const activateKeyBtn = document.getElementById('activate-key-btn');
+const loadFileBtn = document.getElementById('load-file-btn');
+const createFileBtn = document.getElementById('create-file-btn');
+const messagesDiv = document.getElementById('messages');
+const inputArea = document.getElementById('input-area');
+const msgInput = document.getElementById('msg-input');
+const sendBtn = document.getElementById('send-btn');
+const fileInput = document.getElementById('file-input');
+const notification = document.getElementById('notification');
+const menuBtn = document.getElementById('menu-btn');
+const menuPanel = document.getElementById('menu-panel');
+const menuClose = document.getElementById('menu-close');
+const killChatBtn = document.getElementById('kill-chat-btn');
+const participantsCount = document.getElementById('participants-count');
+const lastActivity = document.getElementById('last-activity');
+const encryptionStatus = document.getElementById('encryption-status');
+const clientIdSpan = document.getElementById('client-id');
+const selfNameSpan = document.getElementById('self-name');
+
+// === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+const utils = {
+  generateRoomId: () => 'room-' + Math.random().toString(36).substring(2, 8),
+  
+  generateUniqueName: (clientId) => {
+    const storedNames = utils.getStoredNames();
+    if (storedNames[clientId]) {
+      return storedNames[clientId];
     }
     
-    let selfName = generateRandomName();
+    let newName;
+    let isUnique = false;
     
-    // Форматирование времени
-    function formatTime(timestamp) {
-      const date = new Date(timestamp);
-      return date.toLocaleTimeString('ru-RU', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false
-      });
-    }
-    
-    // Добавление сообщения в UI
-    function addMessage(text, senderName, isOwn, timestamp, isSystem = false) {
-      const messageDiv = document.createElement('div');
-      messageDiv.className = `message ${isOwn ? 'own' : 'other'}`;
+    while (!isUnique) {
+      const color = nameColors[Math.floor(Math.random() * nameColors.length)];
+      const animal = nameAnimals[Math.floor(Math.random() * nameAnimals.length)];
+      newName = `${color} ${animal}`;
       
-      if (isSystem) {
-        messageDiv.className = 'system';
-        messageDiv.textContent = text;
-      } else {
-        messageDiv.innerHTML = `
-          <span class="sender">${senderName}</span>
-          <div>${text}</div>
-          <span class="time">${formatTime(timestamp)}</span>
-        `;
-      }
-      
-      messagesDiv.appendChild(messageDiv);
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    }
-    
-    // Обновление статуса
-    function updateStatus(text, isSecure = false) {
-      statusDiv.textContent = text;
-      statusDiv.className = 'status' + (isSecure ? ' secure' : '');
-    }
-    
-    // Генерация случайного AES ключа
-    function generateAESKey() {
-      const array = new Uint8Array(32);
-      window.crypto.getRandomValues(array);
-      return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
-    }
-    
-    // Подключение к MQTT
-    function connectToRoom(roomId) {
-      if (client) {
-        client.end();
-      }
-      
-      currentTopic = `secret-chat/${roomId}`;
-      client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
-        clientId: clientId,
-        reconnectPeriod: 3000
-      });
-      
-      client.on('connect', () => {
-        console.log('Подключено к MQTT');
-        client.subscribe(currentTopic, { qos: 1 });
-        
-        // Отправляем сообщение о подключении
-        const joinMessage = JSON.stringify({
-          type: 'join',
-          clientId: clientId,
-          name: selfName,
-          timestamp: Date.now()
-        });
-        
-        client.publish(currentTopic, joinMessage, { qos: 1 });
-        updateStatus(`Подключено к комнате: ${roomId}`);
-      });
-      
-      client.on('message', (topic, payload) => {
-        if (topic !== currentTopic) return;
-        
-        try {
-          const message = JSON.parse(payload.toString());
-          handleMessage(message);
-        } catch (e) {
-          console.error('Ошибка обработки сообщения:', e);
+      isUnique = true;
+      for (const [id, name] of state.participants) {
+        if (name === newName && id !== clientId) {
+          isUnique = false;
+          break;
         }
-      });
-      
-      client.on('error', (error) => {
-        console.error('MQTT ошибка:', error);
-        updateStatus('❌ Ошибка подключения к серверу');
-      });
-      
-      client.on('reconnect', () => {
-        updateStatus('🔄 Переподключение к серверу...');
-      });
-      
-      client.on('offline', () => {
-        updateStatus('⚠️ Сервер недоступен');
-      });
-    }
-    
-    // Обработка входящих сообщений
-    function handleMessage(message) {
-      // Проверка на дубликат по ID
-      if (message.id && messageIds.has(message.id)) {
-        return;
       }
       
-      if (message.id) {
-        messageIds.add(message.id);
-      }
-      
-      const timestamp = message.timestamp || Date.now();
-      
-      // Системные сообщения
-      if (message.type === 'join') {
-        if (message.clientId !== clientId) {
-          participants.set(message.clientId, message.name);
-          addMessage(`${message.name} подключился к чату`, 'Система', false, timestamp, true);
-        }
-        return;
-      }
-      
-      // Обычные сообщения
-      if (message.type === 'message') {
-        let content = message.content;
-        let senderName = message.sender || 'Неизвестный';
-        const isOwn = message.clientId === clientId;
-        
-        // Дешифрование если нужно
-        if (isEncrypted && message.encrypted) {
-          try {
-            content = decryptMessage(message.encrypted);
-          } catch (e) {
-            content = '[❌ Ошибка расшифровки]';
+      if (isUnique) {
+        for (const savedName of Object.values(storedNames)) {
+          if (savedName === newName) {
+            isUnique = false;
+            break;
           }
         }
-        
-        addMessage(content, senderName, isOwn, timestamp);
       }
     }
     
-    // Шифрование сообщения
-    async function encryptMessage(text) {
-      if (!encryptionKey) return null;
+    storedNames[clientId] = newName;
+    localStorage.setItem('secret-chat-names', JSON.stringify(storedNames));
+    
+    return newName;
+  },
+  
+  getStoredNames: () => {
+    const stored = localStorage.getItem('secret-chat-names');
+    return stored ? JSON.parse(stored) : {};
+  },
+  
+  formatTime: (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('ru-RU', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false
+    });
+  },
+  
+  updateStatus: (status, isSecure = false) => {
+    document.getElementById('status-text').textContent = status;
+    const connectionStatus = document.getElementById('connection-status');
+    connectionStatus.className = 'status-dot';
+    
+    if (status.includes('Подключено')) {
+      connectionStatus.classList.add('connected');
+      if (isSecure) {
+        connectionStatus.classList.add('secure');
+      }
+    }
+  },
+  
+  showNotification: (message, type = 'info') => {
+    notification.textContent = message;
+    notification.className = `system-notification ${type}`;
+    notification.classList.add('show');
+    
+    setTimeout(() => {
+      notification.classList.remove('show');
+    }, 3000);
+  },
+  
+  addMessage: (text, isOwn, senderName, timestamp, isEncrypted = false) => {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `msg ${isOwn ? 'my' : 'theirs'}`;
+    
+    let html = `
+      <span class="sender-name">${senderName}</span>
+      <div class="message-content">${text}</div>
+      <span class="message-time">${utils.formatTime(timestamp)}</span>
+    `;
+    
+    if (isEncrypted && isOwn) {
+      html += '<div class="encrypted-badge"></div>';
+    }
+    
+    msgDiv.innerHTML = html;
+    messagesDiv.appendChild(msgDiv);
+    
+    setTimeout(() => {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }, 50);
+    
+    lastActivity.textContent = utils.formatTime(timestamp);
+    participantsCount.textContent = state.participants.size;
+    selfNameSpan.textContent = state.selfName;
+  },
+  
+  addSystemMessage: (text, type = 'normal') => {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'msg';
+    msgDiv.style.backgroundColor = 'rgba(51, 65, 85, 0.5)';
+    msgDiv.style.textAlign = 'center';
+    msgDiv.style.borderRadius = '12px';
+    msgDiv.style.color = type === 'secure' ? '#4ade80' : type === 'warning' ? '#fbbf24' : '#94a3b8';
+    
+    msgDiv.innerHTML = `
+      <span class="message-time">${utils.formatTime(Date.now())}</span>
+      <div class="message-content">${text}</div>
+    `;
+    
+    messagesDiv.appendChild(msgDiv);
+    
+    setTimeout(() => {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }, 50);
+  },
+  
+  saveSession: () => {
+    if (!persistCheckbox.checked || !state.isConnected) {
+      sessionStorage.removeItem('secret-chat-session');
+      return;
+    }
+    
+    sessionStorage.setItem('secret-chat-session', JSON.stringify({
+      room: roomInput.value,
+      selfName: state.selfName,
+      participants: Object.fromEntries(state.participants),
+      timestamp: Date.now()
+    }));
+  },
+  
+  loadSession: () => {
+    const saved = sessionStorage.getItem('secret-chat-session');
+    if (!saved) return false;
+    
+    try {
+      const s = JSON.parse(saved);
+      if (Date.now() - s.timestamp > 86400000) return false;
       
-      const iv = window.crypto.getRandomValues(new Uint8Array(12));
-      const encoder = new TextEncoder();
-      const data = encoder.encode(text);
+      roomInput.value = s.room;
+      state.selfName = s.selfName;
       
-      const key = await window.crypto.subtle.importKey(
+      state.participants.clear();
+      if (s.participants) {
+        Object.entries(s.participants).forEach(([clientId, name]) => {
+          state.participants.set(clientId, name);
+        });
+      }
+      
+      persistCheckbox.checked = true;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+  
+  resetUI: () => {
+    keyPanel.style.display = 'none';
+    createFileBtn.style.display = 'none';
+    inputArea.style.display = 'none';
+    sendBtn.disabled = true;
+    messagesDiv.innerHTML = '';
+    roomInput.disabled = false;
+    connectBtn.disabled = false;
+    state.participants.clear();
+    participantsCount.textContent = '0';
+    encryptionStatus.textContent = 'Не активно';
+    state.selfName = '';
+    selfNameSpan.textContent = '-';
+  },
+  
+  adjustInputHeight: () => {
+    const input = msgInput;
+    input.style.height = 'auto';
+    if (input.scrollHeight > 100) {
+      input.style.height = '100px';
+    } else {
+      input.style.height = (input.scrollHeight) + 'px';
+    }
+  }
+};
+
+// === КРИПТОГРАФИЧЕСКИЕ ФУНКЦИИ ===
+const cryptoUtils = {
+  generateRandomAESKey: () => {
+    const arr = new Uint8Array(32);
+    crypto.getRandomValues(arr);
+    return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+  },
+  
+  encryptMsg: async (plaintext) => {
+    if (!state.aesKey) throw new Error('Ключ не установлен');
+    
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(plaintext);
+    try {
+      const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, state.aesKey, encoded);
+      const combined = new Uint8Array(iv.length + cipher.byteLength);
+      combined.set(iv, 0);
+      combined.set(new Uint8Array(cipher), iv.length);
+      return 'ENC:' + btoa(String.fromCharCode.apply(null, combined));
+    } catch (e) {
+      console.error('Ошибка шифрования:', e);
+      throw new Error('Ошибка шифрования сообщения');
+    }
+  },
+  
+  decryptMsg: async (payload) => {
+    if (!payload.startsWith('ENC:')) return '[Неизвестный формат]';
+    if (!state.aesKey) return '[Ключ не установлен]';
+    
+    try {
+      const b64 = payload.slice(4);
+      const combined = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const iv = combined.slice(0, 12);
+      const ct = combined.slice(12);
+      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, state.aesKey, ct);
+      return new TextDecoder().decode(decrypted);
+    } catch (e) {
+      console.error('Ошибка дешифровки:', e);
+      return '[❌ Ошибка расшифровки]';
+    }
+  },
+  
+  deriveKeyFromPassphrase: async (passphrase, salt) => {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(passphrase),
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  },
+  
+  encryptFileData: async (data, passphrase) => {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const aesKey = await cryptoUtils.deriveKeyFromPassphrase(passphrase, salt);
+    const encoded = new TextEncoder().encode(data);
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, encoded);
+    const result = new Uint8Array(16 + 12 + cipher.byteLength);
+    result.set(salt, 0);
+    result.set(iv, 16);
+    result.set(new Uint8Array(cipher), 28);
+    return result;
+  },
+  
+  decryptFileData: async (buffer, passphrase) => {
+    const salt = buffer.slice(0, 16);
+    const iv = buffer.slice(16, 28);
+    const ct = buffer.slice(28);
+    const aesKey = await cryptoUtils.deriveKeyFromPassphrase(passphrase, salt);
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
+    return new TextDecoder().decode(decrypted);
+  },
+  
+  generateAESKey: async (hex) => {
+    if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+      throw new Error('Неверный формат ключа (должно быть 64 hex символа)');
+    }
+    
+    try {
+      const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+      state.aesKey = await crypto.subtle.importKey(
         'raw',
-        hexToBuffer(encryptionKey),
+        keyBuf.buffer,
         { name: 'AES-GCM' },
         false,
-        ['encrypt']
+        ['encrypt', 'decrypt']
       );
-      
-      const encrypted = await window.crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        data
-      );
-      
-      const buffer = new Uint8Array(iv.byteLength + encrypted.byteLength);
-      buffer.set(iv, 0);
-      buffer.set(new Uint8Array(encrypted), iv.byteLength);
-      
-      return arrayBufferToBase64(buffer.buffer);
+      state.isKeySet = true;
+      encryptionStatus.textContent = 'Активно (AES-GCM)';
+      utils.showNotification('✅ Ключ успешно активирован!', 'secure');
+      utils.addSystemMessage('🔒 Шифрование активировано. Все сообщения защищены.', 'secure');
+      return true;
+    } catch (e) {
+      console.error('Ошибка генерации ключа:', e);
+      throw new Error('Ошибка активации ключа');
     }
-    
-    // Дешифрование сообщения
-    async function decryptMessage(encryptedData) {
-      if (!encryptionKey) return encryptedData;
-      
-      const buffer = base64ToArrayBuffer(encryptedData);
-      const iv = buffer.slice(0, 12);
-      const data = buffer.slice(12);
-      
-      const key = await window.crypto.subtle.importKey(
-        'raw',
-        hexToBuffer(encryptionKey),
-        { name: 'AES-GCM' },
-        false,
-        ['decrypt']
-      );
-      
-      const decrypted = await window.crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        data
-      );
-      
-      const decoder = new TextDecoder();
-      return decoder.decode(decrypted);
+  }
+};
+
+// === ФАЙЛОВЫЕ ОПЕРАЦИИ ===
+const fileUtils = {
+  createChristmasFile: async () => {
+    if (!state.isConnected || !state.isKeySet) {
+      utils.showNotification('❌ Активируйте ключ для создания файла', 'danger');
+      return;
     }
-    
-    // Вспомогательные функции для криптографии
-    function hexToBuffer(hex) {
-      const buffer = new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-      return buffer;
+
+    const passphrase = prompt('Введите кодовую фразу для файла (4–24 символа):');
+    if (!passphrase || passphrase.length < 4 || passphrase.length > 24) {
+      utils.showNotification('❌ Фраза должна быть от 4 до 24 символов', 'danger');
+      return;
     }
-    
-    function arrayBufferToBase64(buffer) {
-      return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)));
-    }
-    
-    function base64ToArrayBuffer(base64) {
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      return bytes;
-    }
-    
-    // Отправка сообщения
-    async function sendMessage() {
-      const text = messageInput.value.trim();
-      if (!text || !client || !client.connected) return;
-      
-      const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-      let contentToSend = text;
-      let encryptedContent = null;
-      
-      if (isEncrypted) {
-        try {
-          encryptedContent = await encryptMessage(text);
-        } catch (e) {
-          console.error('Ошибка шифрования:', e);
-          alert('Ошибка шифрования сообщения');
-          return;
-        }
-      }
-      
-      const message = {
-        id: messageId,
-        type: 'message',
-        content: text,
-        encrypted: encryptedContent,
-        sender: selfName,
-        clientId: clientId,
+
+    try {
+      const data = JSON.stringify({ 
+        v: 1, 
+        room: roomInput.value, 
+        key: keyInput.value.trim(),
+        clientId: state.clientId,
+        selfName: state.selfName,
         timestamp: Date.now()
-      };
+      });
       
-      client.publish(currentTopic, JSON.stringify(message), { qos: 1 });
+      const encrypted = await cryptoUtils.encryptFileData(data, passphrase);
+      const blob = new Blob([encrypted], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
       
-      // Отображаем сообщение сразу
-      addMessage(text, selfName, true, message.timestamp);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Christmas.by';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       
-      messageInput.value = '';
-      messageInput.focus();
+      utils.showNotification('✅ Файл Christmas.by создан!', 'secure');
+      utils.addSystemMessage('🔒 Файл создан. Передайте его корреспонденту безопасным способом.', 'secure');
+    } catch (e) {
+      utils.showNotification('❌ Ошибка создания файла', 'danger');
+      console.error(e);
     }
-    
-    // Инициализация
-    function init() {
-      // Генерация случайного ID комнаты при загрузке
-      if (!roomInput.value) {
-        roomInput.value = 'room-' + Math.random().toString(36).substr(2, 8);
+  },
+  
+  loadChristmasFile: async (file) => {
+    const arrayBuffer = await file.arrayBuffer();
+    const passphrase = prompt('Введите кодовую фразу для файла Christmas.by:');
+    if (!passphrase) return;
+
+    try {
+      const decrypted = await cryptoUtils.decryptFileData(arrayBuffer, passphrase);
+      const data = JSON.parse(decrypted);
+      
+      if (data.v !== 1 || !data.room || !/^[0-9a-fA-F]{64}$/.test(data.key)) {
+        throw new Error('Неверный формат файла');
+      }
+
+      const { room, key, clientId, selfName } = data;
+      
+      state.selfName = selfName || utils.generateUniqueName(state.clientId);
+      
+      utils.showNotification('✅ Файл успешно загружен!', 'secure');
+      utils.addSystemMessage('✅ Данные из файла загружены успешно', 'secure');
+      
+      await chatUtils.connectToRoom(room);
+      keyInput.value = key;
+      await cryptoUtils.generateAESKey(key);
+      state.isSecureConnection = true;
+      
+      if (clientId) {
+        const creatorName = utils.generateUniqueName(clientId);
+        state.participants.set(clientId, creatorName);
+        utils.addSystemMessage(`🔒 ${creatorName} — создатель файла (безопасное соединение)`, 'secure');
       }
       
-      // Обработчики событий
-      connectButton.addEventListener('click', () => {
-        const roomId = roomInput.value.trim();
-        if (!roomId) {
-          alert('Введите ID комнаты');
-          return;
-        }
-        connectToRoom(roomId);
-        keyControls.style.display = 'flex';
-      });
+    } catch (err) {
+      utils.showNotification('❌ Ошибка загрузки файла', 'danger');
+      utils.addSystemMessage(`❌ ${err.message || 'Неверная фраза или повреждённый файл'}`, 'danger');
+    }
+  }
+};
+
+// === ОСНОВНЫЕ ФУНКЦИИ ЧАТА ===
+const chatUtils = {
+  initMQTT: () => {
+    if (state.mqttClient) {
+      state.mqttClient.end();
+    }
+    
+    state.mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+      clientId: state.clientId,
+      clean: true,
+      reconnectPeriod: 3000,
+      connectTimeout: 5000
+    });
+    
+    state.mqttClient.on('connect', () => {
+      console.log('MQTT подключен');
+      state.mqttClient.subscribe(state.currentTopic, { qos: 1 });
+      utils.updateStatus(`Подключено к: ${roomInput.value}`, state.isSecureConnection);
       
-      generateKeyBtn.addEventListener('click', () => {
-        keyInput.value = generateAESKey();
-        updateStatus('🔑 Ключ сгенерирован. Нажмите "Активировать" для шифрования.');
-      });
+      setTimeout(() => {
+        chatUtils.sendSystemMessage(`JOIN:${state.clientId}:${state.selfName}`);
+      }, 500);
+    });
+    
+    state.mqttClient.on('message', (topic, payload) => {
+      if (topic !== state.currentTopic) return;
       
-      activateKeyBtn.addEventListener('click', async () => {
-        const key = keyInput.value.trim();
-        if (!key || !/^[0-9a-fA-F]{64}$/.test(key)) {
-          alert('Ключ должен быть 64 символа hex (0-9, a-f)');
+      try {
+        const msg = payload.toString();
+        
+        // Проверка на дубликат
+        if (state.messageIds.has(msg)) {
           return;
         }
         
-        encryptionKey = key;
-        isEncrypted = true;
-        keyControls.style.display = 'none';
-        fileControls.style.display = 'flex';
-        inputArea.style.display = 'flex';
-        sendButton.disabled = false;
-        updateStatus('🔒 Шифрование активировано', true);
-        addMessage('Шифрование включено. Все сообщения защищены.', 'Система', false, Date.now(), true);
-      });
-      
-      loadFileBtn.addEventListener('click', () => {
-        fileInput.click();
-      });
-      
-      fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file && file.name.endsWith('.by')) {
-          alert('Функция загрузки файла будет реализована в следующей версии');
+        state.messageIds.add(msg);
+        
+        if (msg.startsWith('SYS:')) {
+          const parts = msg.split(':');
+          if (parts[1] === 'JOIN') {
+            const clientId = parts[2];
+            const senderName = parts[3] || utils.generateUniqueName(clientId);
+            
+            if (clientId !== state.clientId) {
+              state.participants.set(clientId, senderName);
+              utils.addSystemMessage(`✅ ${senderName} подключился к чату`, 'secure');
+            }
+          }
+          return;
+        }
+        
+        if (state.isKeySet) {
+          const plain = await cryptoUtils.decryptMsg(msg);
+          utils.addMessage(plain, false, 'Корреспондент', Date.now());
         } else {
-          alert('Выберите файл с расширением .by');
+          utils.addMessage('[🔒 Зашифровано]', false, 'Неизвестный', Date.now());
         }
-      });
+      } catch (e) {
+        console.error('Ошибка обработки сообщения:', e);
+      }
+    });
+    
+    return state.mqttClient;
+  },
+  
+  connectToRoom: (room) => {
+    return new Promise((resolve) => {
+      state.currentTopic = `sc-${room.replace(/\W/g, '_')}`;
+      state.isConnected = true;
       
-      createFileBtn.addEventListener('click', () => {
-        alert('Функция создания файла будет реализована в следующей версии');
-      });
+      roomInput.value = room;
+      roomInput.disabled = true;
+      connectBtn.disabled = true;
+      keyPanel.style.display = 'flex';
       
-      sendButton.addEventListener('click', sendMessage);
+      chatUtils.initMQTT();
       
-      messageInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          sendMessage();
-        }
-      });
-      
-      // Фокус на поле ввода
-      messageInput.addEventListener('focus', () => {
-        if (messageInput.value === 'Введите сообщение...') {
-          messageInput.value = '';
-        }
-      });
-      
-      messageInput.addEventListener('blur', () => {
-        if (!messageInput.value.trim()) {
-          messageInput.value = 'Введите сообщение...';
-        }
-      });
-      
-      // Добавляем приветственное сообщение
-      setTimeout(() => {
-        addMessage('Добро пожаловать в секретный чат! Для начала работы введите ID комнаты и нажмите "Подключиться".', 'Система', false, Date.now(), true);
-      }, 500);
+      resolve();
+    });
+  },
+  
+  sendSystemMessage: (data) => {
+    if (!state.mqttClient || !state.mqttClient.connected || !state.isConnected) {
+      return;
     }
     
-    // Запуск при загрузке страницы
-    window.addEventListener('DOMContentLoaded', init);
-  </script>
+    state.mqttClient.publish(state.currentTopic, data, { qos: 1 });
+  },
+  
+  send: async () => {
+    if (!state.mqttClient || !state.mqttClient.connected) {
+      utils.showNotification('⚠️ Ожидание подключения к серверу...', 'warning');
+      return;
+    }
+    
+    if (!state.isConnected || !state.isKeySet) {
+      utils.showNotification('❌ Сначала подключитесь к комнате и активируйте ключ', 'danger');
+      return;
+    }
+    
+    const text = msgInput.value.trim();
+    if (!text) return;
+    
+    const timestamp = Date.now();
+    const messageId = `msg-${timestamp}-${Math.random().toString(36).substring(2, 8)}`;
+    const messageData = `${state.selfName}:${text}:${messageId}`;
+    
+    try {
+      const encrypted = await cryptoUtils.encryptMsg(messageData);
+      
+      // Проверка на дубликат перед отправкой
+      if (state.messageIds.has(encrypted)) {
+        return;
+      }
+      
+      state.messageIds.add(encrypted);
+      
+      state.mqttClient.publish(state.currentTopic, encrypted, { qos: 1 });
+      
+      utils.addMessage(text, true, state.selfName, timestamp, true);
+      
+      msgInput.value = '';
+      msgInput.style.height = 'auto';
+      state.lastMessageTime = timestamp;
+      utils.saveSession();
+      
+    } catch (e) {
+      console.error('Ошибка отправки:', e);
+      utils.showNotification(`❌ ${e.message || 'Ошибка отправки'}`, 'danger');
+    }
+  },
+  
+  resetChat: () => {
+    if (state.isConnected && state.currentTopic && state.mqttClient?.connected) {
+      chatUtils.sendSystemMessage('SYS:WIPE');
+    }
+    
+    if (state.mqttClient) {
+      state.mqttClient.end();
+    }
+    
+    state.aesKey = null;
+    state.isConnected = false;
+    state.isKeySet = false;
+    state.isSecureConnection = false;
+    state.participants.clear();
+    state.messageHistory = [];
+    state.lastMessageTime = 0;
+    state.messageIds.clear();
+    
+    utils.resetUI();
+    persistCheckbox.checked = false;
+    sessionStorage.removeItem('secret-chat-session');
+    localStorage.removeItem('secret-chat-names');
+    
+    roomInput.value = utils.generateRoomId();
+    roomInput.disabled = false;
+    connectBtn.disabled = false;
+    clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
+    
+    utils.updateStatus('Чат уничтожен. Начата новая сессия');
+    utils.showNotification('✅ Чат полностью очищен', 'secure');
+  }
+};
+
+// === ИНИЦИАЛИЗАЦИЯ ===
+const init = () => {
+  if (!window.crypto || !window.crypto.subtle) {
+    alert('Ваш браузер не поддерживает криптографию. Используйте Chrome, Firefox или Edge.');
+    return;
+  }
+  
+  state.selfName = utils.generateUniqueName(state.clientId);
+  selfNameSpan.textContent = state.selfName;
+  clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
+  
+  msgInput.addEventListener('input', utils.adjustInputHeight);
+  msgInput.addEventListener('focus', utils.adjustInputHeight);
+  
+  if (!utils.loadSession()) {
+    roomInput.value = utils.generateRoomId();
+  }
+  
+  utils.updateStatus('Готов к подключению');
+};
+
+// === ОБРАБОТЧИКИ СОБЫТИЙ ===
+document.addEventListener('DOMContentLoaded', () => {
+  init();
+  
+  connectBtn.onclick = () => {
+    const room = roomInput.value.trim();
+    if (!room) {
+      utils.showNotification('❌ Укажите ID комнаты', 'danger');
+      return;
+    }
+    chatUtils.connectToRoom(room);
+    utils.saveSession();
+  };
+  
+  generateKeyBtn.onclick = () => {
+    keyInput.value = cryptoUtils.generateRandomAESKey();
+    utils.showNotification('✅ Ключ сгенерирован!', 'secure');
+  };
+  
+  activateKeyBtn.onclick = async () => {
+    const hex = keyInput.value.trim();
+    if (!hex) {
+      utils.showNotification('❌ Введите ключ', 'danger');
+      return;
+    }
+    
+    try {
+      await cryptoUtils.generateAESKey(hex);
+      keyPanel.style.display = 'none';
+      inputArea.style.display = 'flex';
+      sendBtn.disabled = false;
+      createFileBtn.style.display = 'block';
+      
+      setTimeout(() => {
+        msgInput.focus();
+        utils.adjustInputHeight();
+      }, 300);
+      
+      chatUtils.sendSystemMessage(`SYS:JOIN:${state.clientId}:${state.selfName}`);
+    } catch (e) {
+      utils.showNotification(`❌ ${e.message}`, 'danger');
+    }
+  };
+  
+  loadFileBtn.onclick = () => {
+    fileInput.click();
+  };
+  
+  fileInput.onchange = (e) => {
+    const file = e.target.files[0];
+    if (file && file.name.endsWith('.by')) {
+      fileUtils.loadChristmasFile(file);
+      fileInput.value = '';
+    } else {
+      utils.showNotification('❌ Выберите файл с расширением .by', 'danger');
+    }
+  };
+  
+  createFileBtn.onclick = fileUtils.createChristmasFile;
+  
+  sendBtn.onclick = chatUtils.send;
+  
+  msgInput.onkeypress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      chatUtils.send();
+    }
+  };
+  
+  menuBtn.onclick = () => {
+    menuPanel.classList.add('open');
+  };
+  
+  menuClose.onclick = () => {
+    menuPanel.classList.remove('open');
+  };
+  
+  killChatBtn.onclick = () => {
+    if (confirm('Вы уверены? Это полностью очистит чат и все данные!')) {
+      chatUtils.resetChat();
+      menuPanel.classList.remove('open');
+    }
+  };
+  
+  document.addEventListener('click', (e) => {
+    if (menuPanel.classList.contains('open') && 
+        !menuPanel.contains(e.target) && 
+        e.target !== menuBtn && 
+        e.target !== menuClose) {
+      menuPanel.classList.remove('open');
+    }
+  });
+});
+
+// === ПРОВЕРКА СОСТОЯНИЯ ===
+setInterval(() => {
+  if (state.mqttClient && !state.mqttClient.connected && state.isConnected) {
+    utils.updateStatus('⚠️ Соединение потеряно', false);
+  }
+}, 5000);
+</script>
 </body>
 </html>
