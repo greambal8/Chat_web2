@@ -3,72 +3,134 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>🔒 Телеметрия-чат</title>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <title>🔒 Секретный чат</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --secondary: #1e293b;
+      --dark: #0f172a;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --light: #f1f5f9;
+      --gray: #64748b;
+      --border: #334155;
+      --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Roboto', sans-serif;
-      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+      background: var(--dark);
+      color: var(--light);
       display: flex;
-      justify-content: center;
+      flex-direction: column;
       min-height: 100vh;
-      padding: 12px;
+      padding: 8px;
     }
     #chat-container {
-      width: 100%;
-      max-width: 500px;
-      background: #1e293b;
-      border-radius: 20px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      background: var(--secondary);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
       overflow: hidden;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
     }
-    #messages {
-      height: 340px;
-      overflow-y: auto;
+    /* Шапка с состоянием */
+    #header {
+      padding: 12px 16px;
+      background: rgba(30, 41, 59, 0.8);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--warning);
+    }
+    .status-dot.connected {
+      background: var(--success);
+    }
+    .status-dot.secure {
+      background: var(--success);
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+    }
+    /* Панель управления */
+    #control-panel {
       padding: 12px;
-      background: #0f172a;
+      background: var(--dark);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .control-group {
+      display: flex;
+      gap: 8px;
+      flex: 1;
+      min-width: 200px;
+    }
+    /* Сообщения */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
     }
     .msg {
-      margin-bottom: 10px;
-      padding: 10px 12px;
+      max-width: 85%;
+      padding: 14px;
       border-radius: 16px;
-      max-width: 80%;
-      word-wrap: break-word;
-      font-size: 15px;
-      line-height: 1.4;
       position: relative;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
     }
     .my { 
-      background: #4f46e5; 
-      color: white; 
+      background: var(--primary); 
       margin-left: auto;
       border-bottom-right-radius: 4px;
     }
     .theirs { 
-      background: #334155; 
-      color: white;
+      background: var(--dark); 
       border-bottom-left-radius: 4px;
     }
     .sender-name {
-      font-weight: 500;
+      font-weight: 600;
       font-size: 14px;
-      margin-bottom: 2px;
+      margin-bottom: 4px;
       display: block;
     }
-    .my .sender-name { color: #bfdbfe; }
-    .theirs .sender-name { color: #94a3b8; }
+    .my .sender-name { color: #dbeafe; }
+    .theirs .sender-name { color: #cbd5e1; }
+    .message-content {
+      line-height: 1.5;
+      word-break: break-word;
+    }
     .message-time {
       font-size: 12px;
-      color: #94a3b8;
-      text-align: right;
+      color: var(--gray);
       margin-top: 4px;
       display: block;
+      text-align: right;
     }
     .my .message-time { color: #93c5fd; }
-    .theirs .message-time { color: #64748b; }
+    .theirs .message-time { color: #94a3b8; }
     .encrypted-badge {
       position: absolute;
       top: -8px;
@@ -78,130 +140,246 @@
       background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ffffff'%3E%3Cpath d='M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z'/%3E%3C/svg%3E") no-repeat center;
       background-size: contain;
     }
-    .system {
-      text-align: center;
-      padding: 8px;
-      font-size: 13px;
-      margin: 8px 0;
-      border-radius: 8px;
-    }
-    .system.secure {
-      background: rgba(74, 222, 128, 0.15);
-      color: #4ade80;
-      border: 1px solid #166534;
-    }
-    .system.warning {
-      background: rgba(248, 113, 113, 0.15);
-      color: #f87171;
-      border: 1px solid #b91c1c;
-    }
-    .panel {
+    /* Панель ввода */
+    #input-area {
       padding: 12px;
-      background: #1e293b;
+      background: var(--dark);
+      border-top: 1px solid var(--border);
       display: flex;
-      flex-wrap: wrap;
       gap: 8px;
-      align-items: center;
     }
-    input, button, label {
+    #msg-input {
+      flex: 1;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #1e293b;
+      color: var(--light);
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+    }
+    #send-btn {
+      padding: 0 20px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #send-btn:hover {
+      background: var(--primary-dark);
+    }
+    #send-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    /* Панель файлов */
+    #file-panel {
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      background: rgba(30, 41, 59, 0.5);
+      border-top: 1px solid var(--border);
+    }
+    .file-btn {
+      flex: 1;
       padding: 10px;
       border-radius: 10px;
-      border: 1px solid #334155;
-      font-size: 15px;
-      background: #334155;
-      color: #f1f5f9;
-      min-width: 0;
-    }
-    #room-id, #key-input, #msg-input, #passphrase-input {
-      flex: 1;
-      min-width: 120px;
-    }
-    button {
-      background: #4f46e5;
+      border: 1px dashed var(--border);
+      background: transparent;
+      color: var(--gray);
+      text-align: center;
       cursor: pointer;
+      transition: all 0.2s;
+    }
+    .file-btn:hover {
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+    /* Системные уведомления */
+    .system-notification {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      max-width: 300px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      color: white;
+      font-size: 14px;
+      z-index: 1000;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+      transform: translateY(-100px);
+      opacity: 0;
+      transition: all 0.3s ease;
+    }
+    .system-notification.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    .system-notification.secure {
+      background: rgba(16, 185, 129, 0.9);
+    }
+    .system-notification.warning {
+      background: rgba(245, 158, 11, 0.9);
+    }
+    .system-notification.danger {
+      background: rgba(239, 68, 68, 0.9);
+    }
+    /* Кнопки */
+    .btn {
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: none;
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
       white-space: nowrap;
     }
-    button.danger { background: #dc2626; }
-    #input-area, #file-create-area {
-      display: none;
-      padding: 12px;
-      background: #0f172a;
-      border-top: 1px solid #334155;
-      text-align: center;
+    .btn-primary {
+      background: var(--primary);
+      color: white;
     }
-    #file-input {
-      display: none;
+    .btn-primary:hover {
+      background: var(--primary-dark);
     }
-    #file-label {
-      display: inline-block;
-      padding: 10px 16px;
-      background: #334155;
-      border-radius: 10px;
-      cursor: pointer;
-    }
-    #kill-btn {
-      margin: 0 12px 12px;
-      padding: 12px;
-      width: calc(100% - 24px);
-    }
-    #status {
-      padding: 10px;
-      text-align: center;
-      font-size: 13px;
-      color: #94a3b8;
-      background: #0f172a;
-    }
-    #persist-label {
-      display: flex;
-      align-items: center;
-      gap: 6px;
+    .btn-secondary {
       background: transparent;
-      border: none;
-      color: #cbd5e1;
-      font-size: 14px;
+      border: 1px solid var(--border);
+      color: var(--light);
     }
-    @media (max-width: 520px) {
-      .panel { flex-direction: column; align-items: stretch; }
-      #room-id, #key-input, #msg-input { width: 100%; }
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+    .btn-danger:hover {
+      opacity: 0.9;
+    }
+    /* Меню */
+    #menu-panel {
+      position: fixed;
+      top: 0;
+      right: -300px;
+      width: 280px;
+      height: 100vh;
+      background: var(--secondary);
+      border-left: 1px solid var(--border);
+      padding: 20px;
+      transition: right 0.3s ease;
+      z-index: 100;
+      box-shadow: -2px 0 10px rgba(0,0,0,0.3);
+    }
+    #menu-panel.open {
+      right: 0;
+    }
+    .menu-item {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin: 8px 0;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .menu-item:hover {
+      background: rgba(99, 102, 241, 0.1);
+    }
+    .menu-item.danger {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger);
+    }
+    .menu-item.danger:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+    /* Адаптивность */
+    @media (max-width: 480px) {
+      .control-group {
+        min-width: 100%;
+      }
+      #input-area {
+        flex-direction: column;
+      }
+      #msg-input {
+        width: 100%;
+      }
+      .file-btn {
+        padding: 14px;
+      }
+      #menu-panel {
+        width: 100%;
+      }
     }
   </style>
 </head>
 <body>
 
 <div id="chat-container">
-  <div class="panel">
-    <input type="text" id="room-id" placeholder="ID комнаты">
-    <button id="connect-btn">Подключиться</button>
-    <label id="persist-label">
-      <input type="checkbox" id="persist-checkbox">
-      Удержание
-    </label>
+  <div id="header">
+    <div class="status-indicator">
+      <div class="status-dot" id="connection-status"></div>
+      <span id="status-text">Не подключён</span>
+    </div>
+    <div>
+      <button class="btn btn-secondary" id="menu-btn">☰</button>
+    </div>
   </div>
 
-  <div class="panel" id="file-load-panel">
-    <input type="file" id="file-input" accept=".by">
-    <label for="file-input" id="file-label">Загрузить Christmas.by</label>
+  <div id="control-panel">
+    <div class="control-group">
+      <input type="text" id="room-id" placeholder="ID комнаты" class="btn-secondary">
+      <button class="btn btn-primary" id="connect-btn">Подключиться</button>
+    </div>
+    <div class="control-group">
+      <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+        <input type="checkbox" id="persist-checkbox">
+        <span>Запомнить сессию</span>
+      </label>
+    </div>
   </div>
 
-  <div class="panel" id="key-panel" style="display:none;">
-    <input type="text" id="key-input" placeholder="Ключ (64 hex)" maxlength="64">
-    <button id="gen-key">Сгенерировать</button>
-    <button id="use-key">Активировать</button>
+  <div id="file-panel">
+    <div class="file-btn" id="load-file-btn">
+      📁 Загрузить Christmas.by
+    </div>
+    <div class="file-btn" id="create-file-btn" style="display: none;">
+      💾 Создать файл
+    </div>
   </div>
 
-  <div id="file-create-area">
-    <button id="create-file-btn">Создать Christmas.by</button>
+  <div id="messages">
+    <!-- Сообщения будут здесь -->
   </div>
 
-  <div id="input-area" style="display:none;">
-    <input type="text" id="msg-input" placeholder="Сообщение..." autocomplete="off">
-    <button id="send-btn">Отправить</button>
+  <div id="input-area" style="display: none;">
+    <input type="text" id="msg-input" placeholder="Введите сообщение..." autocomplete="off">
+    <button id="send-btn" disabled>Отправить</button>
   </div>
+</div>
 
-  <div id="messages"></div>
+<input type="file" id="file-input" accept=".by" style="display: none;">
 
-  <div id="status">Готов к защищённому общению</div>
-  <button id="kill-btn" class="danger">KILL-CHAT</button>
+<!-- Системные уведомления -->
+<div class="system-notification" id="notification"></div>
+
+<!-- Меню -->
+<div id="menu-panel">
+  <h3 style="margin-bottom: 20px; color: var(--light);">Меню</h3>
+  <div class="menu-item" id="kill-chat-btn">
+    🗑️ KILL-CHAT (полная очистка)
+  </div>
+  <div class="menu-item">
+    📋 Статистика участников: <span id="participants-count">0</span>
+  </div>
+  <div class="menu-item">
+    ⏰ Последняя активность: <span id="last-activity">-</span>
+  </div>
+  <div class="menu-item">
+    🔑 Статус шифрования: <span id="encryption-status">Не активно</span>
+  </div>
 </div>
 
 <script>
@@ -211,44 +389,41 @@ const state = {
   aesKey: null,
   isConnected: false,
   isKeySet: false,
-  messageHistory: [],
-  currentKeyHex: '',
   isSecureConnection: false,
-  clientId: 'dev-' + Math.random().toString(36).substring(2, 10),
-  lastMessageTime: 0,
-  participants: new Map(), // clientId -> { name, lastActive }
+  clientId: 'client-' + Math.random().toString(36).substring(2, 10),
   selfName: '',
-  telemetryPattern: {
-    device_id: 'sensor-0000',
-    ts: Date.now(),
-    data: 'ENC:',
-    v: 1,
-    type: 'temp'
-  }
+  participants: new Map(), // clientId -> name
+  lastMessageTime: 0,
+  sentMessages: new Set(),
+  messageHistory: []
 };
+
+// === СПИСКИ ДЛЯ ГЕНЕРАЦИИ ИМЁН ===
+const nameColors = ['Синий', 'Красный', 'Зелёный', 'Жёлтый', 'Фиолетовый', 'Оранжевый', 'Розовый', 'Голубой', 'Серый', 'Бирюзовый', 'Индиго', 'Бордовый', 'Бронзовый', 'Серебряный', 'Золотой', 'Хаки', 'Мятный', 'Лавандовый'];
+const nameAnimals = ['Волк', 'Лиса', 'Сова', 'Ястреб', 'Тигр', 'Медведь', 'Леопард', 'Орёл', 'Дракон', 'Феникс', 'Лев', 'Змея', 'Кот', 'Пёс', 'Кролик', 'Лошадь', 'Слон', 'Обезьяна', 'Панда', 'Крокодил', 'Черепаха', 'Кит', 'Акула', 'Осьминог'];
 
 // === DOM ЭЛЕМЕНТЫ ===
 const elements = {
+  connectionStatus: document.getElementById('connection-status'),
+  statusText: document.getElementById('status-text'),
   roomInput: document.getElementById('room-id'),
   connectBtn: document.getElementById('connect-btn'),
   persistCheckbox: document.getElementById('persist-checkbox'),
-  keyPanel: document.getElementById('key-panel'),
-  keyInput: document.getElementById('key-input'),
-  genKeyBtn: document.getElementById('gen-key'),
-  useKeyBtn: document.getElementById('use-key'),
-  fileInput: document.getElementById('file-input'),
+  loadFileBtn: document.getElementById('load-file-btn'),
   createFileBtn: document.getElementById('create-file-btn'),
   messagesDiv: document.getElementById('messages'),
   inputArea: document.getElementById('input-area'),
   msgInput: document.getElementById('msg-input'),
   sendBtn: document.getElementById('send-btn'),
-  statusDiv: document.getElementById('status'),
-  killBtn: document.getElementById('kill-btn')
+  fileInput: document.getElementById('file-input'),
+  notification: document.getElementById('notification'),
+  menuBtn: document.getElementById('menu-btn'),
+  menuPanel: document.getElementById('menu-panel'),
+  killChatBtn: document.getElementById('kill-chat-btn'),
+  participantsCount: document.getElementById('participants-count'),
+  lastActivity: document.getElementById('last-activity'),
+  encryptionStatus: document.getElementById('encryption-status')
 };
-
-// === СПИСКИ ДЛЯ ГЕНЕРАЦИИ ИМЁН ===
-const nameColors = ['Синий', 'Красный', 'Зелёный', 'Жёлтый', 'Фиолетовый', 'Оранжевый', 'Розовый', 'Голубой', 'Серый', 'Бирюзовый'];
-const nameAnimals = ['Волк', 'Лиса', 'Сова', 'Ястреб', 'Тигр', 'Медведь', 'Леопард', 'Орёл', 'Дракон', 'Феникс'];
 
 // === MQTT КЛИЕНТ ===
 const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
@@ -258,12 +433,44 @@ const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 const utils = {
-  generateRoomId: () => 'r-' + Math.random().toString(36).substring(2, 10),
+  generateRoomId: () => 'room-' + Math.random().toString(36).substring(2, 8),
   
-  generateRandomName: () => {
-    const color = nameColors[Math.floor(Math.random() * nameColors.length)];
-    const animal = nameAnimals[Math.floor(Math.random() * nameAnimals.length)];
-    return `${color} ${animal}`;
+  generateUniqueName: (clientId) => {
+    // Проверяем localStorage
+    const storedNames = utils.getStoredNames();
+    if (storedNames[clientId]) {
+      return storedNames[clientId];
+    }
+    
+    // Генерируем новое уникальное имя
+    let newName;
+    let isUnique = false;
+    
+    while (!isUnique) {
+      const color = nameColors[Math.floor(Math.random() * nameColors.length)];
+      const animal = nameAnimals[Math.floor(Math.random() * nameAnimals.length)];
+      newName = `${color} ${animal}`;
+      
+      // Проверяем уникальность
+      isUnique = true;
+      for (const [id, name] of state.participants) {
+        if (name === newName && id !== clientId) {
+          isUnique = false;
+          break;
+        }
+      }
+    }
+    
+    // Сохраняем в localStorage
+    storedNames[clientId] = newName;
+    localStorage.setItem('secret-chat-names', JSON.stringify(storedNames));
+    
+    return newName;
+  },
+  
+  getStoredNames: () => {
+    const stored = localStorage.getItem('secret-chat-names');
+    return stored ? JSON.parse(stored) : {};
   },
   
   formatTime: (timestamp) => {
@@ -275,45 +482,65 @@ const utils = {
     });
   },
   
-  setStatus: (msg) => { elements.statusDiv.textContent = msg; },
-  
-  addMessageToUI: (text, isOwn, isEncrypted = false, senderName = '', timestamp = Date.now()) => {
-    const div = document.createElement('div');
-    div.className = `msg ${isOwn ? 'my' : 'theirs'}`;
+  updateStatus: (status, isSecure = false) => {
+    elements.statusText.textContent = status;
+    elements.connectionStatus.className = 'status-dot';
     
-    // Имя отправителя
-    const nameEl = document.createElement('span');
-    nameEl.className = 'sender-name';
-    nameEl.textContent = senderName || (isOwn ? state.selfName : 'Неизвестный');
-    div.appendChild(nameEl);
-    
-    // Текст сообщения
-    const textEl = document.createElement('span');
-    textEl.textContent = text;
-    div.appendChild(textEl);
-    
-    // Время сообщения
-    const timeEl = document.createElement('span');
-    timeEl.className = 'message-time';
-    timeEl.textContent = utils.formatTime(timestamp);
-    div.appendChild(timeEl);
-    
-    // Иконка шифрования
-    if (isEncrypted && isOwn) {
-      const badge = document.createElement('div');
-      badge.className = 'encrypted-badge';
-      div.appendChild(badge);
+    if (status.includes('Подключено')) {
+      elements.connectionStatus.classList.add('connected');
+      if (isSecure) {
+        elements.connectionStatus.classList.add('secure');
+      }
     }
-    
-    elements.messagesDiv.appendChild(div);
-    elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
   },
   
-  addSystemMsg: (text, type = 'normal') => {
-    const div = document.createElement('div');
-    div.className = `system ${type === 'secure' ? 'secure' : type === 'warning' ? 'warning' : ''}`;
-    div.textContent = text;
-    elements.messagesDiv.appendChild(div);
+  showNotification: (message, type = 'info') => {
+    elements.notification.textContent = message;
+    elements.notification.className = `system-notification ${type}`;
+    elements.notification.classList.add('show');
+    
+    setTimeout(() => {
+      elements.notification.classList.remove('show');
+    }, 3000);
+  },
+  
+  addMessage: (text, isOwn, senderName, timestamp, isEncrypted = false) => {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `msg ${isOwn ? 'my' : 'theirs'}`;
+    
+    let html = `
+      <span class="sender-name">${senderName}</span>
+      <div class="message-content">${text}</div>
+      <span class="message-time">${utils.formatTime(timestamp)}</span>
+    `;
+    
+    if (isEncrypted && isOwn) {
+      html += '<div class="encrypted-badge"></div>';
+    }
+    
+    msgDiv.innerHTML = html;
+    elements.messagesDiv.appendChild(msgDiv);
+    elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
+    
+    // Обновляем статистику
+    elements.lastActivity.textContent = utils.formatTime(timestamp);
+    elements.participantsCount.textContent = state.participants.size;
+  },
+  
+  addSystemMessage: (text, type = 'normal') => {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'msg';
+    msgDiv.style.backgroundColor = 'rgba(51, 65, 85, 0.5)';
+    msgDiv.style.textAlign = 'center';
+    msgDiv.style.borderRadius = '12px';
+    msgDiv.style.color = type === 'secure' ? '#4ade80' : type === 'warning' ? '#fbbf24' : '#94a3b8';
+    
+    msgDiv.innerHTML = `
+      <span class="message-time">${utils.formatTime(Date.now())}</span>
+      <div class="message-content">${text}</div>
+    `;
+    
+    elements.messagesDiv.appendChild(msgDiv);
     elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
   },
   
@@ -323,11 +550,10 @@ const utils = {
       return;
     }
     
-    // Сохраняем только своё имя и комнату
     sessionStorage.setItem('secret-chat-session', JSON.stringify({
       room: elements.roomInput.value,
-      key: state.currentKeyHex,
       selfName: state.selfName,
+      participants: Object.fromEntries(state.participants),
       timestamp: Date.now()
     }));
   },
@@ -335,13 +561,21 @@ const utils = {
   loadSession: () => {
     const saved = sessionStorage.getItem('secret-chat-session');
     if (!saved) return false;
+    
     try {
       const s = JSON.parse(saved);
       if (Date.now() - s.timestamp > 86400000) return false;
       
       elements.roomInput.value = s.room;
-      state.currentKeyHex = s.key;
-      state.selfName = s.selfName || utils.generateRandomName();
+      state.selfName = s.selfName;
+      
+      // Восстанавливаем участников
+      state.participants.clear();
+      if (s.participants) {
+        Object.entries(s.participants).forEach(([clientId, name]) => {
+          state.participants.set(clientId, name);
+        });
+      }
       
       elements.persistCheckbox.checked = true;
       return true;
@@ -351,18 +585,23 @@ const utils = {
   },
   
   resetUI: () => {
-    elements.keyPanel.style.display = 'none';
-    elements.createFileBtn.parentNode.style.display = 'none';
+    elements.createFileBtn.style.display = 'none';
     elements.inputArea.style.display = 'none';
+    elements.sendBtn.disabled = true;
     elements.messagesDiv.innerHTML = '';
     elements.roomInput.disabled = false;
     elements.connectBtn.disabled = false;
+    state.participants.clear();
+    elements.participantsCount.textContent = '0';
+    elements.encryptionStatus.textContent = 'Не активно';
   }
 };
 
 // === КРИПТОГРАФИЧЕСКИЕ ФУНКЦИИ ===
 const cryptoUtils = {
   encryptMsg: async (plaintext) => {
+    if (!state.aesKey) throw new Error('Ключ не установлен');
+    
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encoded = new TextEncoder().encode(plaintext);
     const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, state.aesKey, encoded);
@@ -374,6 +613,8 @@ const cryptoUtils = {
   
   decryptMsg: async (payload) => {
     if (!payload.startsWith('ENC:')) return '[Неизвестный формат]';
+    if (!state.aesKey) return '[Ключ не установлен]';
+    
     try {
       const b64 = payload.slice(4);
       const combined = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -424,6 +665,23 @@ const cryptoUtils = {
     const aesKey = await cryptoUtils.deriveKeyFromPassphrase(passphrase, salt);
     const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
     return new TextDecoder().decode(decrypted);
+  },
+  
+  generateAESKey: async (hex) => {
+    if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+      throw new Error('Неверный формат ключа');
+    }
+    
+    const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    state.aesKey = await crypto.subtle.importKey(
+      'raw',
+      keyBuf.buffer,
+      { name: 'AES-GCM' },
+      false,
+      ['encrypt', 'decrypt']
+    );
+    state.isKeySet = true;
+    elements.encryptionStatus.textContent = 'Активно (AES-GCM)';
   }
 };
 
@@ -431,28 +689,35 @@ const cryptoUtils = {
 const fileUtils = {
   createChristmasFile: async () => {
     if (!state.isConnected || !state.isKeySet) {
-      alert('Сначала активируйте ключ!');
+      utils.showNotification('❌ Активируйте ключ для создания файла', 'danger');
       return;
     }
 
-    const passphrase = prompt('Введите кодовую фразу (4–24 символа):');
+    const passphrase = prompt('Введите кодовую фразу для файла (4–24 символа):');
     if (!passphrase || passphrase.length < 4 || passphrase.length > 24) {
-      alert('Фраза должна быть от 4 до 24 символов');
+      utils.showNotification('❌ Фраза должна быть от 4 до 24 символов', 'danger');
       return;
     }
 
-    const data = JSON.stringify({ 
-      v: 1, 
-      room: elements.roomInput.value, 
-      key: state.currentKeyHex,
-      clientId: state.clientId,
-      selfName: state.selfName,
-      timestamp: Date.now()
-    });
+    const keyHex = Array.from(new Uint8Array(32), () => Math.floor(Math.random() * 256))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+      
     try {
+      await cryptoUtils.generateAESKey(keyHex);
+      
+      const data = JSON.stringify({ 
+        v: 1, 
+        room: elements.roomInput.value, 
+        key: keyHex,
+        clientId: state.clientId,
+        selfName: state.selfName,
+        timestamp: Date.now()
+      });
+      
       const encrypted = await cryptoUtils.encryptFileData(data, passphrase);
       const blob = new Blob([encrypted], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
+      
       const a = document.createElement('a');
       a.href = url;
       a.download = 'Christmas.by';
@@ -460,42 +725,54 @@ const fileUtils = {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      utils.addSystemMsg('✅ Файл Christmas.by создан и зашифрован!', 'secure');
+      
+      utils.showNotification('✅ Файл Christmas.by создан!', 'secure');
+      utils.addSystemMessage('🔒 Файл создан. Передайте его корреспонденту безопасным способом.', 'secure');
     } catch (e) {
-      alert('Ошибка шифрования файла');
+      utils.showNotification('❌ Ошибка создания файла', 'danger');
+      console.error(e);
     }
   },
   
   loadChristmasFile: async (file) => {
     const arrayBuffer = await file.arrayBuffer();
-    const passphrase = prompt('Введите кодовую фразу для Christmas.by:');
+    const passphrase = prompt('Введите кодовую фразу для файла Christmas.by:');
     if (!passphrase) return;
 
     try {
       const decrypted = await cryptoUtils.decryptFileData(arrayBuffer, passphrase);
       const data = JSON.parse(decrypted);
-      if (data.v !== 1 || !data.room || !/^[0-9a-f]{64}$/.test(data.key)) {
-        throw new Error();
+      
+      if (data.v !== 1 || !data.room || !/^[0-9a-fA-F]{64}$/.test(data.key)) {
+        throw new Error('Неверный формат файла');
       }
 
-      utils.addSystemMsg('✅ Данные загружены из Christmas.by', 'secure');
+      // Сохраняем данные для подключения
+      const { room, key, clientId, selfName } = data;
+      
+      // Генерируем уникальное имя
+      state.selfName = selfName || utils.generateUniqueName(state.clientId);
+      
+      utils.showNotification('✅ Файл успешно загружен!', 'secure');
+      utils.addSystemMessage('✅ Данные из файла загружены успешно', 'secure');
+      
+      // Подключаемся к комнате
+      await chatUtils.connectToRoom(room);
+      
+      // Активируем ключ
+      await cryptoUtils.generateAESKey(key);
       state.isSecureConnection = true;
-      utils.setStatus('Подключение через файл...');
-      elements.connectBtn.disabled = true;
-      elements.roomInput.disabled = true;
-      state.selfName = data.selfName || utils.generateRandomName();
       
-      await chatUtils.connectToRoom(data.room);
+      // Добавляем создателя файла как участника
+      if (clientId) {
+        const creatorName = utils.generateUniqueName(clientId);
+        state.participants.set(clientId, creatorName);
+        utils.addSystemMessage(`🔒 ${creatorName} — создатель файла (безопасное соединение)`, 'secure');
+      }
       
-      // Сброс истории при новом подключении через файл
-      state.messageHistory = [];
-      state.lastMessageTime = Date.now();
-      state.participants.clear();
-      
-      await chatUtils.activateKey(data.key);
     } catch (err) {
-      alert('❌ Неверная фраза или повреждённый файл');
-      utils.setStatus('Ошибка загрузки');
+      utils.showNotification('❌ Ошибка загрузки файла', 'danger');
+      utils.addSystemMessage(`❌ ${err.message || 'Неверная фраза или повреждённый файл'}`, 'danger');
     }
   }
 };
@@ -504,92 +781,174 @@ const fileUtils = {
 const chatUtils = {
   connectToRoom: (room) => {
     return new Promise((resolve) => {
-      state.currentTopic = `telemetry/${room}`;
+      if (state.isConnected) {
+        client.unsubscribe(state.currentTopic);
+      }
+      
+      state.currentTopic = `telemetry/${room.replace(/\W/g, '_')}`;
       client.subscribe(state.currentTopic);
       state.isConnected = true;
+      
       elements.roomInput.value = room;
       elements.roomInput.disabled = true;
       elements.connectBtn.disabled = true;
-      elements.keyPanel.style.display = 'flex';
-      utils.setStatus(`Подключено к: ${room}`);
+      elements.createFileBtn.style.display = 'block';
       
-      // Отправляем сообщение о подключении (как телеметрия)
+      utils.updateStatus(`Подключено: ${room}`, state.isSecureConnection);
+      
+      // Отправляем сообщение о подключении
       setTimeout(() => {
-        const telemetry = {
-          device_id: state.clientId,
-          ts: Date.now(),
-          data: `JOIN:${state.clientId}:${state.selfName}`,
-          v: 1,
-          type: 'event'
-        };
-        client.publish(state.currentTopic, JSON.stringify(telemetry), { qos: 1 });
+        chatUtils.sendSystemMessage(`JOIN:${state.clientId}:${state.selfName}`);
       }, 500);
       
       resolve();
     });
   },
   
-  activateKey: async (hex) => {
-    const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(b => parseInt(b, 16)));
-    state.aesKey = await crypto.subtle.importKey('raw', keyBuf.buffer, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-    state.isKeySet = true;
-    state.currentKeyHex = hex;
-
-    elements.keyPanel.style.display = 'none';
-    elements.createFileBtn.parentNode.style.display = 'block';
-    elements.inputArea.style.display = 'flex';
-    utils.setStatus('✅ Ключ активен. Шифрование включено.');
-    utils.addSystemMsg('🔒 Защищённый канал установлен.');
-    utils.saveSession();
+  sendSystemMessage: async (data) => {
+    if (!state.isConnected) return;
+    
+    const telemetry = {
+      device_id: state.clientId,
+      ts: Date.now(),
+      data: data,
+      v: 1,
+      type: 'event'
+    };
+    
+    client.publish(state.currentTopic, JSON.stringify(telemetry), { qos: 1 });
   },
   
   send: async () => {
     if (!state.isConnected || !state.isKeySet) return;
+    
     const text = elements.msgInput.value.trim();
     if (!text) return;
     
-    // Генерируем уникальный ID
-    const messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 8);
+    const timestamp = Date.now();
+    const messageId = `${timestamp}-${Math.random().toString(36).substring(2, 8)}`;
     const fullMessage = `${text}:${messageId}:${state.selfName}`;
     
     try {
       const encrypted = await cryptoUtils.encryptMsg(fullMessage);
+      const messageHash = btoa(fullMessage);
       
-      // Формируем телеметрию
+      // Отображаем сообщение сразу
+      utils.addMessage(text, true, state.selfName, timestamp, true);
+      
+      // Отправляем в MQTT
       const telemetry = {
         device_id: state.clientId,
-        ts: Date.now(),
+        ts: timestamp,
         data: encrypted,
         v: 1,
-        type: 'temp',
+        type: 'message',
         unit: 'C'
       };
       
-      // Отображаем сообщение сразу
-      utils.addMessageToUI(text, true, true, state.selfName, Date.now());
-      
-      // Отправляем в MQTT
       client.publish(state.currentTopic, JSON.stringify(telemetry), { qos: 1 });
       
+      // Добавляем в историю
+      state.messageHistory.push({
+        raw: encrypted,
+        timestamp: timestamp,
+        sender: state.selfName,
+        isOwn: true
+      });
+      
       elements.msgInput.value = '';
-      state.lastMessageTime = Date.now();
+      state.lastMessageTime = timestamp;
       utils.saveSession();
+      
     } catch (e) {
-      console.error('Ошибка отправки:', e);
-      utils.addSystemMsg('❌ Ошибка отправки сообщения', 'warning');
+      utils.showNotification('❌ Ошибка отправки сообщения', 'danger');
+      console.error(e);
+    }
+  },
+  
+  handleIncomingMessage: async (telemetry) => {
+    if (Date.now() - telemetry.ts > 86400000) return; // Игнорируем старые сообщения
+    
+    // Системные сообщения
+    if (telemetry.type === 'event') {
+      if (telemetry.data.startsWith('JOIN:')) {
+        const [_, clientId, senderName] = telemetry.data.split(':');
+        
+        if (clientId !== state.clientId) {
+          let participantName;
+          
+          if (senderName) {
+            participantName = senderName;
+            // Проверяем уникальность
+            if (Array.from(state.participants.values()).includes(participantName)) {
+              participantName = utils.generateUniqueName(clientId);
+            }
+          } else {
+            participantName = utils.generateUniqueName(clientId);
+          }
+          
+          state.participants.set(clientId, participantName);
+          
+          const isSecure = state.isSecureConnection || (clientId === state.clientId);
+          
+          if (isSecure) {
+            utils.addSystemMessage(`🔒 ${participantName} подключился (безопасное соединение)`, 'secure');
+          } else {
+            utils.addSystemMessage(`⚠ ${participantName} подключился (СОЕДИНЕНИЕ НЕ БЕЗОПАСНО!)`, 'warning');
+          }
+        }
+        return;
+      }
+      
+      if (telemetry.data === 'WIPE') {
+        utils.addSystemMessage('🧹 Чат был очищен создателем', 'warning');
+        state.messageHistory = [];
+        elements.messagesDiv.innerHTML = '';
+        return;
+      }
+    }
+    
+    // Обычные сообщения
+    if (telemetry.type === 'message' && telemetry.data.startsWith('ENC:')) {
+      const encrypted = telemetry.data;
+      
+      // Проверка на дубликат
+      if (state.lastMessageTime >= telemetry.ts) return;
+      
+      if (state.isKeySet) {
+        try {
+          const fullText = await cryptoUtils.decryptMsg(encrypted);
+          const [text, messageId, senderName] = fullText.split(':');
+          
+          if (text) {
+            const isOwn = senderName === state.selfName;
+            const displayName = senderName || 'Неизвестный';
+            
+            utils.addMessage(text, isOwn, displayName, telemetry.ts, true);
+            
+            // Добавляем в историю
+            state.messageHistory.push({
+              raw: encrypted,
+              timestamp: telemetry.ts,
+              sender: displayName,
+              isOwn: isOwn
+            });
+          }
+        } catch (e) {
+          utils.addMessage('[❌ Ошибка расшифровки]', false, 'Система', telemetry.ts);
+        }
+      } else {
+        utils.addMessage('[🔒 Зашифровано]', false, 'Неизвестный', telemetry.ts);
+      }
+      
+      state.lastMessageTime = telemetry.ts;
+      utils.saveSession();
     }
   },
   
   resetChat: () => {
-    if (state.currentTopic) {
-      const telemetry = {
-        device_id: state.clientId,
-        ts: Date.now(),
-        data: 'WIPE',
-        v: 1,
-        type: 'event'
-      };
-      client.publish(state.currentTopic, JSON.stringify(telemetry), { qos: 1 });
+    if (state.isConnected && state.currentTopic) {
+      chatUtils.sendSystemMessage('WIPE');
     }
     
     // Сброс состояния
@@ -597,39 +956,29 @@ const chatUtils = {
     state.isConnected = false;
     state.isKeySet = false;
     state.isSecureConnection = false;
+    state.participants.clear();
     state.messageHistory = [];
     state.lastMessageTime = 0;
-    state.participants.clear();
-    state.selfName = utils.generateRandomName();
+    state.sentMessages.clear();
     
     // Сброс UI
     utils.resetUI();
     elements.persistCheckbox.checked = false;
     sessionStorage.removeItem('secret-chat-session');
     
+    // Сброс имен
+    localStorage.removeItem('secret-chat-names');
+    
     // Новый ID комнаты
     elements.roomInput.value = utils.generateRoomId();
-    utils.setStatus('Чат уничтожен. Начата новая сессия.');
+    utils.updateStatus('Чат уничтожен. Начата новая сессия');
+    utils.showNotification('✅ Чат полностью очищен', 'secure');
     
     // Очистка MQTT
     if (state.currentTopic) {
       client.unsubscribe(state.currentTopic);
       state.currentTopic = null;
     }
-  },
-  
-  getParticipantName: (clientId) => {
-    if (state.participants.has(clientId)) {
-      return state.participants.get(clientId).name;
-    }
-    
-    // Генерируем новое имя
-    const newName = utils.generateRandomName();
-    state.participants.set(clientId, { 
-      name: newName, 
-      lastActive: Date.now() 
-    });
-    return newName;
   }
 };
 
@@ -641,141 +990,118 @@ const init = () => {
     return;
   }
   
-  // Генерируем имя для себя
-  state.selfName = utils.generateRandomName();
+  // Генерация уникального имени
+  state.selfName = utils.generateUniqueName(state.clientId);
   
   // Загрузка сессии
   if (!utils.loadSession()) {
     elements.roomInput.value = utils.generateRoomId();
   }
   
-  utils.setStatus('Готов к защищённому общению');
+  utils.updateStatus('Готов к подключению');
+  
+  // MQTT события
+  client.on('connect', () => {
+    console.log('MQTT подключен');
+  });
+  
+  client.on('message', (topic, payload) => {
+    if (topic !== state.currentTopic || !state.isConnected) return;
+    
+    try {
+      const telemetry = JSON.parse(payload.toString());
+      chatUtils.handleIncomingMessage(telemetry);
+    } catch (e) {
+      console.error('Ошибка обработки сообщения:', e);
+    }
+  });
+  
+  // Обработка закрытия вкладки
+  window.addEventListener('beforeunload', () => {
+    if (state.isConnected && state.currentTopic) {
+      chatUtils.sendSystemMessage(`LEAVE:${state.clientId}`);
+    }
+  });
 };
 
 // === ОБРАБОТЧИКИ СОБЫТИЙ ===
-elements.connectBtn.onclick = () => {
-  const room = elements.roomInput.value.trim();
-  if (!room) { 
-    alert('Введите ID комнаты'); 
-    return; 
-  }
-  chatUtils.connectToRoom(room);
-  utils.saveSession();
-};
-
-elements.genKeyBtn.onclick = () => {
-  const arr = new Uint8Array(32);
-  crypto.getRandomValues(arr);
-  elements.keyInput.value = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
-};
-
-elements.useKeyBtn.onclick = () => {
-  const hex = elements.keyInput.value.trim().toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(hex)) {
-    alert('Ключ — 64 символа hex (0-9, a-f)');
-    return;
-  }
-  chatUtils.activateKey(hex);
-};
-
-elements.fileInput.onchange = (e) => {
-  const file = e.target.files[0];
-  if (file && file.name.endsWith('.by')) {
-    fileUtils.loadChristmasFile(file);
-  } else {
-    alert('Выберите файл с расширением .by');
-  }
-};
-
-elements.createFileBtn.onclick = fileUtils.createChristmasFile;
-elements.sendBtn.onclick = chatUtils.send;
-elements.msgInput.onkeypress = (e) => { if (e.key === 'Enter') chatUtils.send(); };
-elements.killBtn.onclick = chatUtils.resetChat;
-elements.persistCheckbox.onchange = utils.saveSession;
-
-// === ОБРАБОТКА MQTT СООБЩЕНИЙ ===
-client.on('message', async (topic, payload) => {
-  if (topic !== state.currentTopic || !state.isConnected) return;
+document.addEventListener('DOMContentLoaded', () => {
+  init();
   
-  try {
-    const telemetry = JSON.parse(payload.toString());
-    
-    // Игнорируем старые сообщения (более 24 часов)
-    if (Date.now() - telemetry.ts > 86400000) return;
-    
-    // Обработка системных событий
-    if (telemetry.type === 'event' && telemetry.data.startsWith('JOIN:')) {
-      const [_, clientId, senderName] = telemetry.data.split(':');
-      
-      if (clientId !== state.clientId) {
-        // Обновляем информацию об участнике
-        const participantName = senderName || chatUtils.getParticipantName(clientId);
-        state.participants.set(clientId, { 
-          name: participantName, 
-          lastActive: telemetry.ts 
-        });
-        
-        const isSecure = state.isSecureConnection || clientId === state.clientId;
-        
-        if (isSecure) {
-          utils.addSystemMsg(`🔒 ${participantName} подключился безопасно`, 'secure');
-        } else {
-          utils.addSystemMsg(`⚠ ${participantName} подключился (СОЕДИНЕНИЕ НЕ БЕЗОПАСНО!)`, 'warning');
-        }
-      }
+  // Генерация случайного ID при загрузке
+  if (!elements.roomInput.value) {
+    elements.roomInput.value = utils.generateRoomId();
+  }
+  
+  // Подключение к комнате
+  elements.connectBtn.onclick = () => {
+    const room = elements.roomInput.value.trim();
+    if (!room) {
+      utils.showNotification('❌ Укажите ID комнаты', 'danger');
       return;
     }
-    
-    // Обработка данных
-    if (telemetry.type === 'temp' && telemetry.data.startsWith('ENC:')) {
-      const encrypted = telemetry.data;
-      
-      // Проверка на дубликат
-      if (state.lastMessageTime >= telemetry.ts) return;
-      
-      // Отображение сообщения
-      if (state.isKeySet) {
-        try {
-          const fullText = await cryptoUtils.decryptMsg(encrypted);
-          const [text, messageId, senderName] = fullText.split(':');
-          
-          if (text) {
-            const isOwn = senderName === state.selfName;
-            const displayName = senderName || 'Неизвестный';
-            
-            utils.addMessageToUI(text, isOwn, true, displayName, telemetry.ts);
-          }
-        } catch (e) {
-          utils.addMessageToUI('[❌ Ошибка расшифровки]', false, false, 'Система', telemetry.ts);
-        }
-      } else {
-        utils.addMessageToUI('[🔒 Зашифровано]', false, false, 'Неизвестный', telemetry.ts);
-      }
-      
-      state.lastMessageTime = telemetry.ts;
-      utils.saveSession();
+    chatUtils.connectToRoom(room);
+    utils.saveSession();
+  };
+  
+  // Загрузка файла
+  elements.loadFileBtn.onclick = () => {
+    elements.fileInput.click();
+  };
+  
+  elements.fileInput.onchange = (e) => {
+    const file = e.target.files[0];
+    if (file && file.name.endsWith('.by')) {
+      fileUtils.loadChristmasFile(file);
+      elements.fileInput.value = '';
+    } else {
+      utils.showNotification('❌ Выберите файл с расширением .by', 'danger');
     }
-  } catch (e) {
-    console.error('Ошибка обработки MQTT:', e);
-  }
+  };
+  
+  // Создание файла
+  elements.createFileBtn.onclick = fileUtils.createChristmasFile;
+  
+  // Отправка сообщения
+  elements.sendBtn.onclick = chatUtils.send;
+  
+  elements.msgInput.onkeypress = (e) => {
+    if (e.key === 'Enter') chatUtils.send();
+  };
+  
+  // Меню
+  elements.menuBtn.onclick = () => {
+    elements.menuPanel.classList.toggle('open');
+  };
+  
+  // KILL-CHAT
+  elements.killChatBtn.onclick = () => {
+    if (confirm('Вы уверены? Это полностью очистит чат и все данные!')) {
+      chatUtils.resetChat();
+      elements.menuPanel.classList.remove('open');
+    }
+  };
+  
+  // Клик вне меню
+  document.addEventListener('click', (e) => {
+    if (elements.menuPanel.classList.contains('open') && 
+        !elements.menuPanel.contains(e.target) && 
+        e.target !== elements.menuBtn) {
+      elements.menuPanel.classList.remove('open');
+    }
+  });
 });
 
-// === ЗАПУСК ===
-window.onload = init;
-
-// Обработка закрытия вкладки
-window.onbeforeunload = () => {
+// === ПРОВЕРКА СОСТОЯНИЯ КАЖДУЮ МИНУТУ ===
+setInterval(() => {
   if (state.isConnected && state.currentTopic) {
-    const telemetry = {
-      device_id: state.clientId,
-      ts: Date.now(),
-      data: `LEAVE:${state.clientId}`,
-      v: 1,
-      type: 'event'
-    };
-    client.publish(state.currentTopic, JSON.stringify(telemetry), { qos: 1 });
+    const now = Date.now();
+    if (now - state.lastMessageTime > 60000) {
+      // Отправляем heartbeat
+      chatUtils.sendSystemMessage('HEARTBEAT');
+    }
   }
-};
+}, 60000);
 </script>
 </body>
 </html>
