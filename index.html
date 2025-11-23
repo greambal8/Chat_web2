@@ -2,62 +2,59 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🔒 СЕКРЕТНЫЙ ЧАТ (E2EE + MQTT)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🔒 СЕКРЕТНЫЙ ЧАТ</title>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <script>
-    // Встроенный QR-генератор (без внешних зависимостей)
-    !function(a){"use strict";var b=function(){var a=function(a,b){return function(c,d){var e="";do e+=a.charAt(c%b),c=Math.floor(c/b);while(0<c);return e.length<d&&(c="0".repeat(d-e.length),e=c+e),e}};return{toHex:a("0123456789abcdef",16),toBitString:a("01",2)}}();var c=function(){var a=["0000000","0000001","0000010","0000011","0000100","0000101","0000110","0000111","0001000","0001001","0001010","0001011","0001100","0001101","0001110","0001111","0010000","0010001","0010010","0010011","0010100","0010101","0010110","0010111","0011000","0011001","0011010","0011011","0011100","0011101","0011110","0011111","0100000","0100001","0100010","0100011","0100100","0100101","0100110","0100111","0101000","0101001","0101010","0101011","0101100","0101101","0101110","0101111","0110000","0110001","0110010","0110011","0110100","0110101","0110110","0110111","0111000","0111001","0111010","0111011","0111100","0111101","0111110","0111111","1000000","1000001","1000010","1000011","1000100","1000101","1000110","1000111","1001000","1001001","1001010","1001011","1001100","1001101","1001110","1001111","1010000","1010001","1010010","1010011","1010100","1010101","1010110","1010111","1011000","1011001","1011010","1011011","1011100","1011101","1011110","1011111","1100000","1100001","1100010","1100011","1100100","1100101","1100110","1100111","1101000","1101001","1101010","1101011","1101100","1101101","1101110","1101111","1110000","1110001","1110010","1110011","1110100","1110101","1110110","1110111","1111000","1111001","1111010","1111011","1111100","1111101","1111110","1111111"];return function(b){var c=function(c,d){var e="",f="",g=0,h=0,i=0,j=0,k=0;for(k=0;k<b.length;k++)g<<=8,g|=b[k],h+=8,i=7,i>h-1&&(i=h-1),j=g>>h-i-1,e+=a[j],h-=i+1;if(h>0){j=g<<i-h+1,e+=a[j]}for(k=0;k<e.length;k++)f+=0==parseInt(e.charAt(k))?d[0]:d[1];return f}}();var d=function(){var a=function(a){var b=[];if("string"==typeof a){for(var c=0;c<a.length;c++){var d=a.charCodeAt(c);d<128?b.push(d):d<2048?(b.push(192|d>>6),b.push(128|63&d)):(b.push(224|d>>12),b.push(128|d>>6&63),b.push(128|63&d))}}else if(a instanceof Array)b=a;else throw new Error("invalid data");return b};return{stringToBytes:a}}();var e=function(){var a=function(a,b){var e=d.stringToBytes(a);return c(e,b)};return{stringToBitString:a}}();a.qr=e}(window);
-  </script>
   <style>
+    * { box-sizing: border-box; }
     body {
       font-family: 'Roboto', sans-serif;
       background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
       margin: 0;
-      padding: 16px;
+      padding: 12px;
       color: #e2e8f0;
       display: flex;
       justify-content: center;
-      align-items: flex-start;
       min-height: 100vh;
     }
     #chat-container {
       width: 100%;
-      max-width: 580px;
+      max-width: 500px;
       background: #1e293b;
       border-radius: 20px;
-      box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
       overflow: hidden;
     }
     #messages {
-      height: 380px;
+      height: 340px;
       overflow-y: auto;
-      padding: 16px;
+      padding: 12px;
       background: #0f172a;
     }
     .msg {
-      margin-bottom: 12px;
-      padding: 12px 16px;
-      border-radius: 18px;
-      max-width: 85%;
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      border-radius: 16px;
+      max-width: 80%;
       word-wrap: break-word;
-      font-size: 16px;
+      font-size: 15px;
+      line-height: 1.4;
     }
     .my { background: #4f46e5; color: white; margin-left: auto; }
     .theirs { background: #334155; color: white; }
     .system {
       text-align: center;
       color: #94a3b8;
-      font-size: 14px;
-      margin: 10px 0;
+      font-size: 13px;
+      margin: 8px 0;
     }
     .panel {
-      padding: 16px;
+      padding: 12px;
       background: #1e293b;
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
     }
     input, button, label {
@@ -67,67 +64,68 @@
       font-size: 15px;
       background: #334155;
       color: #f1f5f9;
+      min-width: 0;
     }
-    input {
+    #room-id, #key-input, #msg-input {
       flex: 1;
       min-width: 120px;
     }
-    button {
-      background: #4f46e5;
-      cursor: pointer;
-    }
-    button:hover { opacity: 0.9; }
-    button.danger {
-      background: #dc2626;
-    }
-    #key-input, #share-link-obf {
-      font-family: monospace;
-    }
-    #input-area, #qr-area, #share-area {
-      display: none;
-      padding: 16px;
-      background: #0f172a;
-      border-top: 1px solid #334155;
-      text-align: center;
-    }
-    #qr-code {
-      margin: 16px auto;
-      width: 200px;
-      height: 200px;
-    }
     #share-link-obf {
       width: 100%;
+      padding: 10px;
+      margin: 10px 0;
       background: #1e293b;
       color: #60a5fa;
       border: 1px dashed #4f46e5;
       border-radius: 8px;
+      font-family: monospace;
       font-size: 13px;
     }
+    button {
+      background: #4f46e5;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button.danger { background: #dc2626; }
+    #input-area, #qr-area, #share-area {
+      display: none;
+      padding: 16px 12px;
+      background: #0f172a;
+      border-top: 1px solid #334155;
+      text-align: center;
+    }
+    #qr-canvas {
+      margin: 12px auto;
+      width: 200px;
+      height: 200px;
+      background: white;
+      padding: 4px;
+      border-radius: 12px;
+    }
     #kill-btn {
-      margin: 12px 16px;
-      padding: 10px;
-      background: #dc2626;
-      width: calc(100% - 32px);
+      margin: 0 12px 12px;
+      padding: 12px;
+      width: calc(100% - 24px);
     }
     #status {
-      padding: 12px;
+      padding: 10px;
       text-align: center;
-      font-size: 14px;
+      font-size: 13px;
       color: #94a3b8;
       background: #0f172a;
     }
     #persist-label {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       background: transparent;
       border: none;
       color: #cbd5e1;
+      font-size: 14px;
     }
-    #persist-checkbox {
-      width: auto;
-      height: auto;
-      margin: 0;
+    @media (max-width: 520px) {
+      .panel { flex-direction: column; align-items: stretch; }
+      #room-id, #key-input, #msg-input { width: 100%; }
     }
   </style>
 </head>
@@ -135,7 +133,7 @@
 
 <div id="chat-container">
   <div class="panel">
-    <input type="text" id="room-id" placeholder="ID комнаты (любой)">
+    <input type="text" id="room-id" placeholder="ID комнаты">
     <button id="connect-btn">Подключиться</button>
     <label id="persist-label">
       <input type="checkbox" id="persist-checkbox">
@@ -144,331 +142,381 @@
   </div>
 
   <div class="panel" id="key-panel" style="display:none;">
-    <input type="text" id="key-input" placeholder="AES-256 ключ (64 hex)" maxlength="64">
+    <input type="text" id="key-input" placeholder="Ключ (64 hex)" maxlength="64">
     <button id="gen-key">Сгенерировать</button>
-    <button id="use-key">Использовать ключ</button>
+    <button id="use-key">Активировать</button>
   </div>
 
   <div id="qr-area">
     <div>Покажите QR собеседнику:</div>
-    <div id="qr-code"></div>
+    <canvas id="qr-canvas" width="200" height="200"></canvas>
     <button id="close-qr">Скрыть QR</button>
   </div>
 
   <div id="share-area">
-    <div>Ссылка для передачи (обфусцирована):</div>
-    <input type="text" id="share-link-obf" readonly onclick="this.select()">
-    <button id="copy-obf">Копировать</button>
+    <div>Ссылка (обфусцирована):</div>
+    <input type="text" id="share-link-obf" readonly>
+    <button id="copy-obf">Копировать ссылку</button>
   </div>
 
   <div id="messages"></div>
 
   <div id="input-area">
-    <input type="text" id="msg-input" placeholder="Секретное сообщение..." autocomplete="off">
+    <input type="text" id="msg-input" placeholder="Сообщение..." autocomplete="off">
     <button id="send-btn">Отправить</button>
   </div>
 
-  <div id="status">Готов к созданию защищённого канала</div>
-
+  <div id="status">Готов к защищённому общению</div>
   <button id="kill-btn" class="danger">KILL-CHAT</button>
 </div>
 
 <script>
-  const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
-  const roomInput = document.getElementById('room-id');
-  const connectBtn = document.getElementById('connect-btn');
-  const persistCheckbox = document.getElementById('persist-checkbox');
-  const keyPanel = document.getElementById('key-panel');
-  const keyInput = document.getElementById('key-input');
-  const genKeyBtn = document.getElementById('gen-key');
-  const useKeyBtn = document.getElementById('use-key');
-  const qrArea = document.getElementById('qr-area');
-  const qrCode = document.getElementById('qr-code');
-  const closeQrBtn = document.getElementById('close-qr');
-  const shareArea = document.getElementById('share-area');
-  const shareLinkObf = document.getElementById('share-link-obf');
-  const copyObfBtn = document.getElementById('copy-obf');
-  const messagesDiv = document.getElementById('messages');
-  const inputArea = document.getElementById('input-area');
-  const msgInput = document.getElementById('msg-input');
-  const sendBtn = document.getElementById('send-btn');
-  const statusDiv = document.getElementById('status');
-  const killBtn = document.getElementById('kill-btn');
+// === Простой QR-генератор (на основе таблицы) ===
+function drawQRCode(canvas, text) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  let currentTopic = null;
-  let aesKey = null;
-  let isConnected = false;
-  let isKeySet = false;
-  let currentKeyHex = '';
-  let messageHistory = [];
+  // Простая замена: рисуем текст, если нет библиотеки
+  // Но мы встроим мини-кодировщик для 40 символов
+  const size = 21; // QR Version 1
+  const modules = Array(size).fill().map(() => Array(size).fill(false));
 
-  // ========== Вспомогательные функции ==========
-  function generateRoomId() {
-    return 'room-' + Math.random().toString(36).substring(2, 10);
-  }
-
-  function obfuscateData(room, key) {
-    const data = `r=${room}|k=${key}`;
-    let b64 = btoa(data);
-    b64 = b64.replace(/a/g, 'x').replace(/b/g, 'y').replace(/c/g, 'z').replace(/=/g, '');
-    return b64;
-  }
-
-  function deobfuscateData(obf) {
-    if (!obf) return null;
-    let b64 = obf.replace(/x/g, 'a').replace(/y/g, 'b').replace(/z/g, 'c');
-    while (b64.length % 4) b64 += '=';
-    try {
-      const decoded = atob(b64);
-      const parts = decoded.split('|');
-      if (parts.length !== 2) return null;
-      const room = parts[0].replace('r=', '');
-      const key = parts[1].replace('k=', '');
-      if (!room || !/^[0-9a-f]{64}$/.test(key)) return null;
-      return { room, key: key.toLowerCase() };
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function showQR(key) {
-    qrCode.innerHTML = '';
-    const qr = qrcode(4, 'L');
-    qr.addData(`KEY:${key}`);
-    qr.make();
-    qrCode.innerHTML = qr.createImgTag(4, 8);
-  }
-
-  function addMessageToUI(text, isOwn) {
-    const div = document.createElement('div');
-    div.className = 'msg ' + (isOwn ? 'my' : 'theirs');
-    div.textContent = text;
-    messagesDiv.appendChild(div);
-    div.scrollIntoView();
-  }
-
-  function addSystemMsg(text) {
-    const div = document.createElement('div');
-    div.className = 'system';
-    div.textContent = text;
-    messagesDiv.appendChild(div);
-    div.scrollIntoView();
-  }
-
-  function saveSession() {
-    if (!persistCheckbox.checked) {
-      sessionStorage.removeItem('secret-chat-session');
-      return;
-    }
-    const session = {
-      room: roomInput.value,
-      connected: isConnected,
-      messages: messageHistory.map(m => m.raw),
-      timestamp: Date.now()
-    };
-    sessionStorage.setItem('secret-chat-session', JSON.stringify(session));
-  }
-
-  async function loadAndDecryptHistory() {
-    messagesDiv.innerHTML = '';
-    for (const item of messageHistory) {
-      if (item.raw.startsWith('ENC:') && isKeySet) {
-        const plain = await decryptMsg(item.raw);
-        addMessageToUI(plain, false);
-      } else {
-        addMessageToUI(item.raw, false);
+  // Заглушки: угловые позиции
+  function drawFinder(x, y) {
+    for (let i = -1; i <= 7; i++) {
+      for (let j = -1; j <= 7; j++) {
+        if (x+i >= 0 && x+i < size && y+j >= 0 && y+j < size) {
+          if ((i === -1 || i === 7 || j === -1 || j === 7) ||
+              (i >= 0 && i <= 6 && j >= 0 && j <= 6 && (i%2 === 0 || j%2 === 0))) {
+            modules[y+j][x+i] = true;
+          }
+        }
       }
     }
   }
+  drawFinder(0, 0);
+  drawFinder(size-7, 0);
+  drawFinder(0, size-7);
 
-  // ========== Шифрование ==========
-  async function encryptMsg(plaintext) {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const encoded = new TextEncoder().encode(plaintext);
-    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, encoded);
-    const combined = new Uint8Array(iv.length + cipher.byteLength);
-    combined.set(iv, 0);
-    combined.set(new Uint8Array(cipher), iv.length);
-    return 'ENC:' + btoa(String.fromCharCode.apply(null, combined));
+  // Просто закодируем текст как чёрные/белые полосы (имитация)
+  // Для настоящего использования — заменить на qrcode-generator, но для гарантии — так:
+  ctx.fillStyle = '#000';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('КЛЮЧ:', 100, 80);
+  ctx.fillText(text.substring(0, 16), 100, 100);
+  ctx.fillText(text.substring(16, 32), 100, 115);
+  ctx.fillText(text.substring(32, 48), 100, 130);
+  ctx.fillText(text.substring(48), 100, 145);
+}
+
+// Но чтобы всё работало — подключим qrcode-generator через data URL
+const qrScript = document.createElement('script');
+qrScript.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
+qrScript.onload = () => {
+  window.qrLibLoaded = true;
+  if (window.pendingQRText) {
+    realDrawQR(window.pendingQRText);
   }
+};
+document.head.appendChild(qrScript);
 
-  async function decryptMsg(payload) {
-    if (!payload.startsWith('ENC:')) return '[Неизвестный формат]';
-    try {
-      const b64 = payload.slice(4);
-      const combined = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-      const iv = combined.slice(0, 12);
-      const ct = combined.slice(12);
-      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
-      return new TextDecoder().decode(decrypted);
-    } catch (e) {
-      return '[❌ Не удалось расшифровать — неверный ключ]';
+function realDrawQR(text) {
+  if (!window.qrLibLoaded) {
+    window.pendingQRText = text;
+    return;
+  }
+  const qr = qrcode(0, 'L');
+  qr.addData(text);
+  qr.make();
+  const canvas = document.getElementById('qr-canvas');
+  const ctx = canvas.getContext('2d');
+  const size = qr.getModuleCount();
+  const px = Math.floor(200 / size);
+  ctx.clearRect(0, 0, 200, 200);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 200, 200);
+  ctx.fillStyle = '#000';
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (qr.isDark(r, c)) {
+        ctx.fillRect(c * px, r * px, px, px);
+      }
     }
   }
+}
 
-  // ========== Основные действия ==========
-  async function connectToRoom(room) {
-    currentTopic = `sc-${room}`;
-    client.subscribe(currentTopic);
-    isConnected = true;
-    keyPanel.style.display = 'flex';
-    statusDiv.textContent = `Подключено к комнате: ${room}`;
-    connectBtn.disabled = true;
-    roomInput.disabled = true;
-    saveSession();
+// === Основной код чата ===
+const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+const roomInput = document.getElementById('room-id');
+const connectBtn = document.getElementById('connect-btn');
+const persistCheckbox = document.getElementById('persist-checkbox');
+const keyPanel = document.getElementById('key-panel');
+const keyInput = document.getElementById('key-input');
+const genKeyBtn = document.getElementById('gen-key');
+const useKeyBtn = document.getElementById('use-key');
+const qrArea = document.getElementById('qr-area');
+const shareArea = document.getElementById('share-area');
+const shareLinkObf = document.getElementById('share-link-obf');
+const copyObfBtn = document.getElementById('copy-obf');
+const messagesDiv = document.getElementById('messages');
+const inputArea = document.getElementById('input-area');
+const msgInput = document.getElementById('msg-input');
+const sendBtn = document.getElementById('send-btn');
+const statusDiv = document.getElementById('status');
+const killBtn = document.getElementById('kill-btn');
+const closeQrBtn = document.getElementById('close-qr');
+
+let currentTopic = null;
+let aesKey = null;
+let isConnected = false;
+let isKeySet = false;
+let currentKeyHex = '';
+let messageHistory = [];
+
+// Вспомогательные функции
+const generateRoomId = () => 'r-' + Math.random().toString(36).substring(2, 10);
+
+const obfuscateData = (room, key) => {
+  const data = `r=${room}|k=${key}`;
+  let b64 = btoa(data);
+  return b64.replace(/a/g, 'x').replace(/b/g, 'y').replace(/c/g, 'z').replace(/=/g, '');
+};
+
+const deobfuscateData = (obf) => {
+  if (!obf) return null;
+  let b64 = obf.replace(/x/g, 'a').replace(/y/g, 'b').replace(/z/g, 'c');
+  while (b64.length % 4) b64 += '=';
+  try {
+    const decoded = atob(b64);
+    const [rPart, kPart] = decoded.split('|');
+    const room = rPart?.replace('r=', '');
+    const key = kPart?.replace('k=', '');
+    if (!room || !/^[0-9a-f]{64}$/.test(key)) return null;
+    return { room, key: key.toLowerCase() };
+  } catch (e) {
+    return null;
   }
+};
 
-  async function activateKey(hex) {
-    const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    aesKey = await crypto.subtle.importKey('raw', keyBuf.buffer, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-    isKeySet = true;
-    currentKeyHex = hex;
+const setStatus = (msg) => { statusDiv.textContent = msg; };
 
-    keyPanel.style.display = 'none';
-    inputArea.style.display = 'flex';
-    qrArea.style.display = 'block';
-    shareArea.style.display = 'block';
-    showQR(hex);
-    shareLinkObf.value = `${window.location.origin}${window.location.pathname}#${obfuscateData(roomInput.value, hex)}`;
+const addMessageToUI = (text, isOwn) => {
+  const div = document.createElement('div');
+  div.className = `msg ${isOwn ? 'my' : 'theirs'}`;
+  div.textContent = text;
+  messagesDiv.appendChild(div);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+};
 
-    statusDiv.textContent = '✅ Ключ активен. Все сообщения зашифрованы.';
-    addSystemMsg('🔒 Шифрование включено.');
-    await loadAndDecryptHistory();
-    saveSession();
-  }
+const addSystemMsg = (text) => {
+  const div = document.createElement('div');
+  div.className = 'system';
+  div.textContent = text;
+  messagesDiv.appendChild(div);
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+};
 
-  async function send() {
-    if (!isConnected || !isKeySet) return;
-    const text = msgInput.value.trim();
-    if (!text) return;
-    const encrypted = await encryptMsg(text);
-    client.publish(currentTopic, encrypted, { qos: 1 });
-    messageHistory.push({ raw: encrypted });
-    addMessageToUI(text, true);
-    msgInput.value = '';
-    saveSession();
-  }
-
-  function resetChat() {
-    // Отправка команды (условно)
-    if (currentTopic) {
-      client.publish(currentTopic, 'SYS:WIPE', { qos: 1 });
-    }
-
-    // Сброс состояния
-    aesKey = null;
-    currentKeyHex = '';
-    isConnected = false;
-    isKeySet = false;
-    messageHistory = [];
-
-    // Сброс UI
-    roomInput.disabled = false;
-    connectBtn.disabled = false;
-    keyPanel.style.display = 'none';
-    qrArea.style.display = 'none';
-    shareArea.style.display = 'none';
-    inputArea.style.display = 'none';
-    messagesDiv.innerHTML = '';
-    persistCheckbox.checked = false;
+const saveSession = () => {
+  if (!persistCheckbox.checked) {
     sessionStorage.removeItem('secret-chat-session');
-
-    // Новый ID
-    roomInput.value = generateRoomId();
-    statusDiv.textContent = 'Чат уничтожен. Готов к новой сессии.';
+    return;
   }
+  sessionStorage.setItem('secret-chat-session', JSON.stringify({
+    room: roomInput.value,
+    connected: isConnected,
+    messages: messageHistory.map(m => m.raw),
+    timestamp: Date.now()
+  }));
+};
 
-  // ========== Инициализация при загрузке ==========
-  async function init() {
-    // Попытка загрузить из хэша (#...)
-    const hash = window.location.hash.substring(1);
-    const deobf = deobfuscateData(hash);
-    if (deobf) {
-      // Удалить хэш из URL
-      history.replaceState(null, null, ' ');
-      roomInput.value = deobf.room;
-      await connectToRoom(deobf.room);
-      await activateKey(deobf.key);
-      return;
-    }
-
-    // Попытка загрузить из сессии
-    const saved = sessionStorage.getItem('secret-chat-session');
-    if (saved) {
-      try {
-        const session = JSON.parse(saved);
-        if (Date.now() - session.timestamp < 24 * 60 * 60 * 1000) {
-          roomInput.value = session.room;
-          messageHistory = session.messages.map(m => ({ raw: m }));
-          isConnected = session.connected;
-          if (isConnected) {
-            await connectToRoom(session.room);
-          }
-          persistCheckbox.checked = true;
-          return;
-        }
-      } catch (e) {}
-    }
-
-    // Генерация нового ID
-    if (!roomInput.value) {
-      roomInput.value = generateRoomId();
-    }
-  }
-
-  // ========== Обработчики ==========
-  connectBtn.onclick = async () => {
-    const room = roomInput.value.trim();
-    if (!room) {
-      alert('Укажите ID комнаты');
-      return;
-    }
-    await connectToRoom(room);
-  };
-
-  genKeyBtn.onclick = () => {
-    const arr = new Uint8Array(32);
-    crypto.getRandomValues(arr);
-    keyInput.value = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
-  };
-
-  useKeyBtn.onclick = async () => {
-    const hex = keyInput.value.trim().toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(hex)) {
-      alert('Ключ должен быть 64 символа HEX (0-9, a-f)');
-      return;
-    }
-    await activateKey(hex);
-  };
-
-  closeQrBtn.onclick = () => qrArea.style.display = 'none';
-  copyObfBtn.onclick = () => {
-    shareLinkObf.select();
-    document.execCommand('copy');
-    alert('Ссылка скопирована!');
-  };
-
-  sendBtn.onclick = send;
-  msgInput.onkeypress = (e) => { if (e.key === 'Enter') send(); };
-  killBtn.onclick = resetChat;
-
-  // Запуск
-  window.onload = init;
-  persistCheckbox.onchange = saveSession;
-  client.on('connect', () => {});
-
-  client.on('message', async (topic, payload) => {
-    if (topic !== currentTopic) return;
-    const msg = payload.toString();
-    messageHistory.push({ raw: msg });
-    if (isKeySet) {
-      const plain = await decryptMsg(msg);
+const loadAndDecryptHistory = async () => {
+  messagesDiv.innerHTML = '';
+  for (const item of messageHistory) {
+    if (item.raw.startsWith('ENC:') && isKeySet) {
+      const plain = await decryptMsg(item.raw);
       addMessageToUI(plain, false);
     } else {
-      addMessageToUI('[🔒 Зашифровано — введите ключ]', false);
+      addMessageToUI('[🔒 Зашифровано]', false);
     }
-    saveSession();
-  });
+  }
+};
+
+const encryptMsg = async (plaintext) => {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(plaintext);
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, encoded);
+  const combined = new Uint8Array(iv.length + cipher.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(cipher), iv.length);
+  return 'ENC:' + btoa(String.fromCharCode.apply(null, combined));
+};
+
+const decryptMsg = async (payload) => {
+  if (!payload.startsWith('ENC:')) return '[Неизвестный формат]';
+  try {
+    const b64 = payload.slice(4);
+    const combined = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const iv = combined.slice(0, 12);
+    const ct = combined.slice(12);
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
+    return new TextDecoder().decode(decrypted);
+  } catch (e) {
+    return '[❌ Ошибка расшифровки]';
+  }
+};
+
+const connectToRoom = async (room) => {
+  currentTopic = `sc-${room}`;
+  client.subscribe(currentTopic);
+  isConnected = true;
+  keyPanel.style.display = 'flex';
+  setStatus(`Подключено: ${room}`);
+  connectBtn.disabled = true;
+  roomInput.disabled = true;
+  saveSession();
+};
+
+const activateKey = async (hex) => {
+  const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(b => parseInt(b, 16)));
+  aesKey = await crypto.subtle.importKey('raw', keyBuf.buffer, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  isKeySet = true;
+  currentKeyHex = hex;
+
+  keyPanel.style.display = 'none';
+  inputArea.style.display = 'block';
+  qrArea.style.display = 'block';
+  shareArea.style.display = 'block';
+  realDrawQR(`KEY:${hex}`);
+  shareLinkObf.value = `${location.origin}${location.pathname}#${obfuscateData(roomInput.value, hex)}`;
+
+  setStatus('✅ Ключ активен. Шифрование включено.');
+  addSystemMsg('🔒 Защищённый канал установлен.');
+  await loadAndDecryptHistory();
+  saveSession();
+};
+
+const send = async () => {
+  if (!isConnected || !isKeySet) return;
+  const text = msgInput.value.trim();
+  if (!text) return;
+  const encrypted = await encryptMsg(text);
+  client.publish(currentTopic, encrypted, { qos: 1 });
+  messageHistory.push({ raw: encrypted });
+  addMessageToUI(text, true);
+  msgInput.value = '';
+  saveSession();
+};
+
+const resetChat = () => {
+  if (currentTopic) client.publish(currentTopic, 'SYS:WIPE', { qos: 1 });
+  aesKey = null;
+  currentKeyHex = '';
+  isConnected = false;
+  isKeySet = false;
+  messageHistory = [];
+  roomInput.disabled = false;
+  connectBtn.disabled = false;
+  keyPanel.style.display = 'none';
+  qrArea.style.display = 'none';
+  shareArea.style.display = 'none';
+  inputArea.style.display = 'none';
+  messagesDiv.innerHTML = '';
+  persistCheckbox.checked = false;
+  sessionStorage.removeItem('secret-chat-session');
+  roomInput.value = generateRoomId();
+  setStatus('Чат уничтожен. Начата новая сессия.');
+};
+
+const copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus('✅ Ссылка скопирована!');
+  } catch (err) {
+    const input = document.createElement('textarea');
+    input.value = text;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    setStatus('✅ Скопировано (через fallback)');
+  }
+};
+
+// Обработчики
+connectBtn.onclick = () => {
+  const room = roomInput.value.trim();
+  if (!room) { alert('Введите ID комнаты'); return; }
+  connectToRoom(room);
+};
+
+genKeyBtn.onclick = () => {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  keyInput.value = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+};
+
+useKeyBtn.onclick = () => {
+  const hex = keyInput.value.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(hex)) {
+    alert('Ключ — 64 символа hex (0-9, a-f)');
+    return;
+  }
+  activateKey(hex);
+};
+
+closeQrBtn.onclick = () => qrArea.style.display = 'none';
+copyObfBtn.onclick = () => copyToClipboard(shareLinkObf.value);
+sendBtn.onclick = send;
+msgInput.onkeypress = (e) => { if (e.key === 'Enter') send(); };
+killBtn.onclick = resetChat;
+persistCheckbox.onchange = saveSession;
+
+// Инициализация
+window.onload = async () => {
+  const hash = location.hash.substring(1);
+  const deobf = deobfuscateData(hash);
+  if (deobf) {
+    history.replaceState(null, null, ' ');
+    roomInput.value = deobf.room;
+    await connectToRoom(deobf.room);
+    await activateKey(deobf.key);
+    return;
+  }
+
+  const saved = sessionStorage.getItem('secret-chat-session');
+  if (saved) {
+    try {
+      const s = JSON.parse(saved);
+      if (Date.now() - s.timestamp < 86400000) {
+        roomInput.value = s.room;
+        messageHistory = s.messages.map(m => ({ raw: m }));
+        isConnected = s.connected;
+        if (isConnected) {
+          await connectToRoom(s.room);
+        }
+        persistCheckbox.checked = true;
+      }
+    } catch (e) {}
+  }
+
+  if (!roomInput.value) roomInput.value = generateRoomId();
+};
+
+client.on('message', async (topic, payload) => {
+  if (topic !== currentTopic) return;
+  const msg = payload.toString();
+  messageHistory.push({ raw: msg });
+  if (isKeySet) {
+    const plain = await decryptMsg(msg);
+    addMessageToUI(plain, false);
+  } else {
+    addMessageToUI('[🔒 Зашифровано]', false);
+  }
+  saveSession();
+});
 </script>
 </body>
 </html>
