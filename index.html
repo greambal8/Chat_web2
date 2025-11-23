@@ -7,7 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
-    // QR-генератор (встроенный, без внешних запросов)
+    // Встроенный QR-генератор (без внешних зависимостей)
     !function(a){"use strict";var b=function(){var a=function(a,b){return function(c,d){var e="";do e+=a.charAt(c%b),c=Math.floor(c/b);while(0<c);return e.length<d&&(c="0".repeat(d-e.length),e=c+e),e}};return{toHex:a("0123456789abcdef",16),toBitString:a("01",2)}}();var c=function(){var a=["0000000","0000001","0000010","0000011","0000100","0000101","0000110","0000111","0001000","0001001","0001010","0001011","0001100","0001101","0001110","0001111","0010000","0010001","0010010","0010011","0010100","0010101","0010110","0010111","0011000","0011001","0011010","0011011","0011100","0011101","0011110","0011111","0100000","0100001","0100010","0100011","0100100","0100101","0100110","0100111","0101000","0101001","0101010","0101011","0101100","0101101","0101110","0101111","0110000","0110001","0110010","0110011","0110100","0110101","0110110","0110111","0111000","0111001","0111010","0111011","0111100","0111101","0111110","0111111","1000000","1000001","1000010","1000011","1000100","1000101","1000110","1000111","1001000","1001001","1001010","1001011","1001100","1001101","1001110","1001111","1010000","1010001","1010010","1010011","1010100","1010101","1010110","1010111","1011000","1011001","1011010","1011011","1011100","1011101","1011110","1011111","1100000","1100001","1100010","1100011","1100100","1100101","1100110","1100111","1101000","1101001","1101010","1101011","1101100","1101101","1101110","1101111","1110000","1110001","1110010","1110011","1110100","1110101","1110110","1110111","1111000","1111001","1111010","1111011","1111100","1111101","1111110","1111111"];return function(b){var c=function(c,d){var e="",f="",g=0,h=0,i=0,j=0,k=0;for(k=0;k<b.length;k++)g<<=8,g|=b[k],h+=8,i=7,i>h-1&&(i=h-1),j=g>>h-i-1,e+=a[j],h-=i+1;if(h>0){j=g<<i-h+1,e+=a[j]}for(k=0;k<e.length;k++)f+=0==parseInt(e.charAt(k))?d[0]:d[1];return f}}();var d=function(){var a=function(a){var b=[];if("string"==typeof a){for(var c=0;c<a.length;c++){var d=a.charCodeAt(c);d<128?b.push(d):d<2048?(b.push(192|d>>6),b.push(128|63&d)):(b.push(224|d>>12),b.push(128|d>>6&63),b.push(128|63&d))}}else if(a instanceof Array)b=a;else throw new Error("invalid data");return b};return{stringToBytes:a}}();var e=function(){var a=function(a,b){var e=d.stringToBytes(a);return c(e,b)};return{stringToBitString:a}}();a.qr=e}(window);
   </script>
   <style>
@@ -104,9 +104,10 @@
       font-size: 13px;
     }
     #kill-btn {
-      margin-top: 12px;
+      margin: 12px 16px;
       padding: 10px;
       background: #dc2626;
+      width: calc(100% - 32px);
     }
     #status {
       padding: 12px;
@@ -174,7 +175,6 @@
 
 <script>
   const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
-  // DOM
   const roomInput = document.getElementById('room-id');
   const connectBtn = document.getElementById('connect-btn');
   const persistCheckbox = document.getElementById('persist-checkbox');
@@ -195,7 +195,6 @@
   const statusDiv = document.getElementById('status');
   const killBtn = document.getElementById('kill-btn');
 
-  // State
   let currentTopic = null;
   let aesKey = null;
   let isConnected = false;
@@ -203,31 +202,35 @@
   let currentKeyHex = '';
   let messageHistory = [];
 
-  // ========== Обфускация ссылки ==========
+  // ========== Вспомогательные функции ==========
+  function generateRoomId() {
+    return 'room-' + Math.random().toString(36).substring(2, 10);
+  }
+
   function obfuscateData(room, key) {
     const data = `r=${room}|k=${key}`;
     let b64 = btoa(data);
-    // Простая подмена для сокрытия Base64-паттерна
     b64 = b64.replace(/a/g, 'x').replace(/b/g, 'y').replace(/c/g, 'z').replace(/=/g, '');
     return b64;
   }
 
   function deobfuscateData(obf) {
+    if (!obf) return null;
     let b64 = obf.replace(/x/g, 'a').replace(/y/g, 'b').replace(/z/g, 'c');
-    // Восстановим padding
     while (b64.length % 4) b64 += '=';
     try {
       const decoded = atob(b64);
-      const room = decoded.split('|')[0].replace('r=', '');
-      const key = decoded.split('|')[1].replace('k=', '');
-      if (room && /^[0-9a-f]{64}$/.test(key.toLowerCase())) {
-        return { room, key: key.toLowerCase() };
-      }
-    } catch (e) {}
-    return null;
+      const parts = decoded.split('|');
+      if (parts.length !== 2) return null;
+      const room = parts[0].replace('r=', '');
+      const key = parts[1].replace('k=', '');
+      if (!room || !/^[0-9a-f]{64}$/.test(key)) return null;
+      return { room, key: key.toLowerCase() };
+    } catch (e) {
+      return null;
+    }
   }
 
-  // ========== QR ==========
   function showQR(key) {
     qrCode.innerHTML = '';
     const qr = qrcode(4, 'L');
@@ -236,7 +239,22 @@
     qrCode.innerHTML = qr.createImgTag(4, 8);
   }
 
-  // ========== Сохранение сессии ==========
+  function addMessageToUI(text, isOwn) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + (isOwn ? 'my' : 'theirs');
+    div.textContent = text;
+    messagesDiv.appendChild(div);
+    div.scrollIntoView();
+  }
+
+  function addSystemMsg(text) {
+    const div = document.createElement('div');
+    div.className = 'system';
+    div.textContent = text;
+    messagesDiv.appendChild(div);
+    div.scrollIntoView();
+  }
+
   function saveSession() {
     if (!persistCheckbox.checked) {
       sessionStorage.removeItem('secret-chat-session');
@@ -245,66 +263,22 @@
     const session = {
       room: roomInput.value,
       connected: isConnected,
-      messages: messageHistory.map(m => m.raw), // сохраняем в зашифрованном виде!
+      messages: messageHistory.map(m => m.raw),
       timestamp: Date.now()
     };
     sessionStorage.setItem('secret-chat-session', JSON.stringify(session));
   }
 
-  function loadSession() {
-    const saved = sessionStorage.getItem('secret-chat-session');
-    if (!saved) return false;
-    try {
-      const session = JSON.parse(saved);
-      if (Date.now() - session.timestamp > 24 * 60 * 60 * 1000) return false; // 24ч
-      roomInput.value = session.room;
-      messageHistory = session.messages.map(m => ({ raw: m }));
-      // Восстанавливаем UI только после подключения и ввода ключа
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // ========== Основные функции ==========
-  async function simulateConnect(room) {
-    currentTopic = `sc-${room}`;
-    client.subscribe(currentTopic);
-    isConnected = true;
-    keyPanel.style.display = 'flex';
-    statusDiv.textContent = `Подключено к комнате: ${room}`;
-    connectBtn.disabled = true;
-    roomInput.disabled = true;
-    saveSession();
-  }
-
-  async function simulateUseKey(hex) {
-    const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(byte => parseInt(byte, 16)));
-    aesKey = await crypto.subtle.importKey('raw', keyBuf.buffer, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-    isKeySet = true;
-    currentKeyHex = hex;
-
-    keyPanel.style.display = 'none';
-    inputArea.style.display = 'flex';
-    qrArea.style.display = 'block';
-    shareArea.style.display = 'block';
-    showQR(hex);
-    shareLinkObf.value = `${window.location.origin}${window.location.pathname}#${obfuscateData(roomInput.value, hex)}`;
-
-    statusDiv.textContent = '✅ Ключ активен. Все сообщения зашифрованы.';
-    addSystemMsg('🔒 Шифрование включено.');
-
-    // Расшифровка истории
+  async function loadAndDecryptHistory() {
     messagesDiv.innerHTML = '';
     for (const item of messageHistory) {
-      if (item.raw.startsWith('ENC:')) {
+      if (item.raw.startsWith('ENC:') && isKeySet) {
         const plain = await decryptMsg(item.raw);
         addMessageToUI(plain, false);
       } else {
         addMessageToUI(item.raw, false);
       }
     }
-    saveSession();
   }
 
   // ========== Шифрование ==========
@@ -332,53 +306,63 @@
     }
   }
 
-  // ========== Отправка ==========
+  // ========== Основные действия ==========
+  async function connectToRoom(room) {
+    currentTopic = `sc-${room}`;
+    client.subscribe(currentTopic);
+    isConnected = true;
+    keyPanel.style.display = 'flex';
+    statusDiv.textContent = `Подключено к комнате: ${room}`;
+    connectBtn.disabled = true;
+    roomInput.disabled = true;
+    saveSession();
+  }
+
+  async function activateKey(hex) {
+    const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    aesKey = await crypto.subtle.importKey('raw', keyBuf.buffer, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+    isKeySet = true;
+    currentKeyHex = hex;
+
+    keyPanel.style.display = 'none';
+    inputArea.style.display = 'flex';
+    qrArea.style.display = 'block';
+    shareArea.style.display = 'block';
+    showQR(hex);
+    shareLinkObf.value = `${window.location.origin}${window.location.pathname}#${obfuscateData(roomInput.value, hex)}`;
+
+    statusDiv.textContent = '✅ Ключ активен. Все сообщения зашифрованы.';
+    addSystemMsg('🔒 Шифрование включено.');
+    await loadAndDecryptHistory();
+    saveSession();
+  }
+
   async function send() {
     if (!isConnected || !isKeySet) return;
     const text = msgInput.value.trim();
     if (!text) return;
     const encrypted = await encryptMsg(text);
     client.publish(currentTopic, encrypted, { qos: 1 });
-    addMessageToHistory(encrypted);
+    messageHistory.push({ raw: encrypted });
     addMessageToUI(text, true);
     msgInput.value = '';
     saveSession();
   }
 
-  // ========== UI ==========
-  function addMessageToHistory(raw) {
-    messageHistory.push({ raw });
-  }
-
-  function addMessageToUI(text, isOwn) {
-    const div = document.createElement('div');
-    div.className = 'msg ' + (isOwn ? 'my' : 'theirs');
-    div.textContent = text;
-    messagesDiv.appendChild(div);
-    div.scrollIntoView();
-  }
-
-  function addSystemMsg(text) {
-    const div = document.createElement('div');
-    div.className = 'system';
-    div.textContent = text;
-    messagesDiv.appendChild(div);
-    div.scrollIntoView();
-  }
-
-  // ========== KILL-CHAT ==========
-  function killChat() {
+  function resetChat() {
+    // Отправка команды (условно)
     if (currentTopic) {
       client.publish(currentTopic, 'SYS:WIPE', { qos: 1 });
     }
-    // Очистка памяти
+
+    // Сброс состояния
     aesKey = null;
     currentKeyHex = '';
     isConnected = false;
     isKeySet = false;
     messageHistory = [];
-    // Очистка UI
-    roomInput.value = '';
+
+    // Сброс UI
     roomInput.disabled = false;
     connectBtn.disabled = false;
     keyPanel.style.display = 'none';
@@ -386,22 +370,105 @@
     shareArea.style.display = 'none';
     inputArea.style.display = 'none';
     messagesDiv.innerHTML = '';
-    statusDiv.textContent = 'Чат уничтожен. Готов к новой сессии.';
     persistCheckbox.checked = false;
     sessionStorage.removeItem('secret-chat-session');
-    // Перегенерация ID
-    roomInput.value = 'room-' + Math.random().toString(36).slice(2, 10);
+
+    // Новый ID
+    roomInput.value = generateRoomId();
+    statusDiv.textContent = 'Чат уничтожен. Готов к новой сессии.';
+  }
+
+  // ========== Инициализация при загрузке ==========
+  async function init() {
+    // Попытка загрузить из хэша (#...)
+    const hash = window.location.hash.substring(1);
+    const deobf = deobfuscateData(hash);
+    if (deobf) {
+      // Удалить хэш из URL
+      history.replaceState(null, null, ' ');
+      roomInput.value = deobf.room;
+      await connectToRoom(deobf.room);
+      await activateKey(deobf.key);
+      return;
+    }
+
+    // Попытка загрузить из сессии
+    const saved = sessionStorage.getItem('secret-chat-session');
+    if (saved) {
+      try {
+        const session = JSON.parse(saved);
+        if (Date.now() - session.timestamp < 24 * 60 * 60 * 1000) {
+          roomInput.value = session.room;
+          messageHistory = session.messages.map(m => ({ raw: m }));
+          isConnected = session.connected;
+          if (isConnected) {
+            await connectToRoom(session.room);
+          }
+          persistCheckbox.checked = true;
+          return;
+        }
+      } catch (e) {}
+    }
+
+    // Генерация нового ID
+    if (!roomInput.value) {
+      roomInput.value = generateRoomId();
+    }
   }
 
   // ========== Обработчики ==========
+  connectBtn.onclick = async () => {
+    const room = roomInput.value.trim();
+    if (!room) {
+      alert('Укажите ID комнаты');
+      return;
+    }
+    await connectToRoom(room);
+  };
+
   genKeyBtn.onclick = () => {
     const arr = new Uint8Array(32);
     crypto.getRandomValues(arr);
     keyInput.value = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
   };
 
-  connectBtn.onclick = () => {
-    const room = roomInput.value.trim();
-    if (!room) return alert('Укажите ID комнаты');
-    simulateConnect(room);
+  useKeyBtn.onclick = async () => {
+    const hex = keyInput.value.trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(hex)) {
+      alert('Ключ должен быть 64 символа HEX (0-9, a-f)');
+      return;
+    }
+    await activateKey(hex);
   };
+
+  closeQrBtn.onclick = () => qrArea.style.display = 'none';
+  copyObfBtn.onclick = () => {
+    shareLinkObf.select();
+    document.execCommand('copy');
+    alert('Ссылка скопирована!');
+  };
+
+  sendBtn.onclick = send;
+  msgInput.onkeypress = (e) => { if (e.key === 'Enter') send(); };
+  killBtn.onclick = resetChat;
+
+  // Запуск
+  window.onload = init;
+  persistCheckbox.onchange = saveSession;
+  client.on('connect', () => {});
+
+  client.on('message', async (topic, payload) => {
+    if (topic !== currentTopic) return;
+    const msg = payload.toString();
+    messageHistory.push({ raw: msg });
+    if (isKeySet) {
+      const plain = await decryptMsg(msg);
+      addMessageToUI(plain, false);
+    } else {
+      addMessageToUI('[🔒 Зашифровано — введите ключ]', false);
+    }
+    saveSession();
+  });
+</script>
+</body>
+</html>
