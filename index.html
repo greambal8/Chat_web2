@@ -70,37 +70,28 @@
       flex: 1;
       min-width: 120px;
     }
-    #share-link-obf {
-      width: 100%;
-      padding: 10px;
-      margin: 10px 0;
-      background: #1e293b;
-      color: #60a5fa;
-      border: 1px dashed #4f46e5;
-      border-radius: 8px;
-      font-family: monospace;
-      font-size: 13px;
-    }
     button {
       background: #4f46e5;
       cursor: pointer;
       white-space: nowrap;
     }
     button.danger { background: #dc2626; }
-    #input-area, #qr-area, #share-area {
+    #input-area, #file-area {
       display: none;
       padding: 16px 12px;
       background: #0f172a;
       border-top: 1px solid #334155;
       text-align: center;
     }
-    #qr-canvas {
-      margin: 12px auto;
-      width: 200px;
-      height: 200px;
-      background: white;
-      padding: 4px;
-      border-radius: 12px;
+    #file-input {
+      display: none;
+    }
+    #file-label {
+      display: inline-block;
+      padding: 10px 16px;
+      background: #334155;
+      border-radius: 10px;
+      cursor: pointer;
     }
     #kill-btn {
       margin: 0 12px 12px;
@@ -147,16 +138,12 @@
     <button id="use-key">Активировать</button>
   </div>
 
-  <div id="qr-area">
-    <div>Покажите QR собеседнику:</div>
-    <canvas id="qr-canvas" width="200" height="200"></canvas>
-    <button id="close-qr">Скрыть QR</button>
-  </div>
-
-  <div id="share-area">
-    <div>Ссылка (обфусцирована):</div>
-    <input type="text" id="share-link-obf" readonly>
-    <button id="copy-obf">Копировать ссылку</button>
+  <div id="file-area">
+    <div>Создать файл для собеседника:</div>
+    <button id="create-file">Создать Christmas.by</button>
+    <div style="margin-top:12px;">Или загрузите полученный файл:</div>
+    <input type="file" id="file-input" accept=".by">
+    <label for="file-input" id="file-label">Выбрать файл .by</label>
   </div>
 
   <div id="messages"></div>
@@ -171,12 +158,6 @@
 </div>
 
 <script>
-// Загрузка QR-библиотеки
-const qrScript = document.createElement('script');
-qrScript.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
-document.head.appendChild(qrScript);
-
-// DOM
 const roomInput = document.getElementById('room-id');
 const connectBtn = document.getElementById('connect-btn');
 const persistCheckbox = document.getElementById('persist-checkbox');
@@ -184,53 +165,28 @@ const keyPanel = document.getElementById('key-panel');
 const keyInput = document.getElementById('key-input');
 const genKeyBtn = document.getElementById('gen-key');
 const useKeyBtn = document.getElementById('use-key');
-const qrArea = document.getElementById('qr-area');
-const shareArea = document.getElementById('share-area');
-const shareLinkObf = document.getElementById('share-link-obf');
-const copyObfBtn = document.getElementById('copy-obf');
+const fileArea = document.getElementById('file-area');
+const createFileBtn = document.getElementById('create-file');
+const fileInput = document.getElementById('file-input');
 const messagesDiv = document.getElementById('messages');
 const inputArea = document.getElementById('input-area');
 const msgInput = document.getElementById('msg-input');
 const sendBtn = document.getElementById('send-btn');
 const statusDiv = document.getElementById('status');
 const killBtn = document.getElementById('kill-btn');
-const closeQrBtn = document.getElementById('close-qr');
 
-// Глобальное состояние
 let currentTopic = null;
 let aesKey = null;
 let isConnected = false;
 let isKeySet = false;
 let messageHistory = [];
-let isAutoMode = false; // Флаг: запуск через ссылку
+let isAutoMode = false;
 
 // MQTT
 const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
 
 // === Вспомогательные функции ===
 const generateRoomId = () => 'r-' + Math.random().toString(36).substring(2, 10);
-
-const obfuscateData = (room, key) => {
-  const data = `r=${room}|k=${key}`;
-  let b64 = btoa(data);
-  return b64.replace(/a/g, 'x').replace(/b/g, 'y').replace(/c/g, 'z').replace(/=/g, '');
-};
-
-const deobfuscateData = (obf) => {
-  if (!obf) return null;
-  let b64 = obf.replace(/x/g, 'a').replace(/y/g, 'b').replace(/z/g, 'c');
-  while (b64.length % 4) b64 += '=';
-  try {
-    const decoded = atob(b64);
-    const [rPart, kPart] = decoded.split('|');
-    const room = rPart?.replace('r=', '');
-    const key = kPart?.replace('k=', '');
-    if (!room || !/^[0-9a-f]{64}$/.test(key)) return null;
-    return { room, key: key.toLowerCase() };
-  } catch (e) {
-    return null;
-  }
-};
 
 const setStatus = (msg) => { statusDiv.textContent = msg; };
 
@@ -298,26 +254,51 @@ const decryptMsg = async (payload) => {
   }
 };
 
-const drawQR = (text) => {
-  if (typeof qrcode !== 'function') return;
-  const qr = qrcode(0, 'L');
-  qr.addData(text);
-  qr.make();
-  const canvas = document.getElementById('qr-canvas');
-  const ctx = canvas.getContext('2d');
-  const size = qr.getModuleCount();
-  const px = Math.min(200 / size, 200 / size);
-  ctx.clearRect(0, 0, 200, 200);
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, 200, 200);
-  ctx.fillStyle = '#000';
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      if (qr.isDark(r, c)) {
-        ctx.fillRect(c * px, r * px, px, px);
-      }
-    }
+// === Файловые операции ===
+const createChristmasFile = () => {
+  if (!isConnected || !isKeySet) {
+    alert('Сначала активируйте ключ!');
+    return;
   }
+  const data = {
+    v: 1,
+    room: roomInput.value,
+    key: currentKeyHex
+  };
+  const json = JSON.stringify(data);
+  const blob = new Blob([json], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Christmas.by';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setStatus('✅ Файл Christmas.by создан!');
+};
+
+const loadChristmasFile = (file) => {
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const content = e.target.result;
+      const data = JSON.parse(content);
+      if (data.v !== 1 || !data.room || !/^[0-9a-f]{64}$/.test(data.key)) {
+        throw new Error('Неверный формат');
+      }
+      isAutoMode = true;
+      setStatus('Подключение через файл...');
+      connectBtn.disabled = true;
+      roomInput.disabled = true;
+      await connectToRoom(data.room);
+      await activateKey(data.key);
+    } catch (err) {
+      alert('❌ Ошибка чтения файла .by');
+      setStatus('Ошибка загрузки файла');
+    }
+  };
+  reader.readAsText(file);
 };
 
 // === Основные действия ===
@@ -335,26 +316,23 @@ const connectToRoom = (room) => {
   });
 };
 
+let currentKeyHex = '';
 const activateKey = async (hex) => {
   const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(b => parseInt(b, 16)));
   aesKey = await crypto.subtle.importKey('raw', keyBuf.buffer, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
   isKeySet = true;
+  currentKeyHex = hex;
 
   keyPanel.style.display = 'none';
   inputArea.style.display = 'block';
-  qrArea.style.display = 'block';
-  shareArea.style.display = 'block';
-  drawQR(`KEY:${hex}`);
-  shareLinkObf.value = `${location.origin}${location.pathname}#${obfuscateData(roomInput.value, hex)}`;
-
+  fileArea.style.display = 'block';
   setStatus('✅ Ключ активен. Шифрование включено.');
   addSystemMsg('🔒 Защищённый канал установлен.');
   await loadAndDecryptHistory();
   saveSession();
 
-  // Удаляем хэш ТОЛЬКО после успешной активации
   if (isAutoMode) {
-    history.replaceState(null, null, ' ');
+    // Убираем лишнее, но URL не трогаем — файла нет в нём
   }
 };
 
@@ -377,12 +355,10 @@ const resetChat = () => {
   isKeySet = false;
   messageHistory = [];
   isAutoMode = false;
-  // Сброс UI
   roomInput.disabled = false;
   connectBtn.disabled = false;
   keyPanel.style.display = 'none';
-  qrArea.style.display = 'none';
-  shareArea.style.display = 'none';
+  fileArea.style.display = 'none';
   inputArea.style.display = 'none';
   messagesDiv.innerHTML = '';
   persistCheckbox.checked = false;
@@ -391,38 +367,8 @@ const resetChat = () => {
   setStatus('Чат уничтожен. Начата новая сессия.');
 };
 
-const copyToClipboard = async (text) => {
-  try {
-    await navigator.clipboard.writeText(text);
-    setStatus('✅ Ссылка скопирована!');
-  } catch (err) {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    setStatus('✅ Скопировано (альтернативный метод)');
-  }
-};
-
 // === Инициализация ===
-const init = async () => {
-  const hash = location.hash.substring(1);
-  const deobf = deobfuscateData(hash);
-
-  if (deobf) {
-    isAutoMode = true;
-    setStatus('Авто-подключение...');
-    connectBtn.disabled = true;
-    roomInput.disabled = true;
-    await connectToRoom(deobf.room);
-    await activateKey(deobf.key);
-    return;
-  }
-
-  // Загрузка сессии
+const init = () => {
   const saved = sessionStorage.getItem('secret-chat-session');
   if (saved) {
     try {
@@ -431,12 +377,10 @@ const init = async () => {
         roomInput.value = s.room;
         messageHistory = s.messages.map(m => ({ raw: m }));
         persistCheckbox.checked = true;
-        // Не подключаем автоматически — ждём нажатия
         return;
       }
     } catch (e) {}
   }
-
   if (!roomInput.value) {
     roomInput.value = generateRoomId();
   }
@@ -465,17 +409,23 @@ useKeyBtn.onclick = () => {
   activateKey(hex);
 };
 
-closeQrBtn.onclick = () => qrArea.style.display = 'none';
-copyObfBtn.onclick = () => copyToClipboard(shareLinkObf.value);
+createFileBtn.onclick = createChristmasFile;
+fileInput.onchange = (e) => {
+  const file = e.target.files[0];
+  if (file && file.name.endsWith('.by')) {
+    loadChristmasFile(file);
+  } else {
+    alert('Выберите файл с расширением .by');
+  }
+};
+
 sendBtn.onclick = send;
 msgInput.onkeypress = (e) => { if (e.key === 'Enter') send(); };
 killBtn.onclick = resetChat;
 persistCheckbox.onchange = saveSession;
 
 // Запуск
-window.onload = () => {
-  init();
-};
+window.onload = init;
 
 client.on('message', async (topic, payload) => {
   if (topic !== currentTopic) return;
