@@ -7,16 +7,15 @@
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'Roboto', sans-serif;
       background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-      margin: 0;
-      padding: 12px;
       color: #e2e8f0;
       display: flex;
       justify-content: center;
       min-height: 100vh;
+      padding: 12px;
     }
     #chat-container {
       width: 100%;
@@ -27,7 +26,7 @@
       overflow: hidden;
     }
     #messages {
-      height: 320px;
+      height: 340px;
       overflow-y: auto;
       padding: 12px;
       background: #0f172a;
@@ -55,9 +54,20 @@
     }
     .system {
       text-align: center;
-      color: #94a3b8;
+      padding: 8px;
       font-size: 13px;
       margin: 8px 0;
+      border-radius: 8px;
+    }
+    .system.secure {
+      background: rgba(74, 222, 128, 0.15);
+      color: #4ade80;
+      border: 1px solid #166534;
+    }
+    .system.warning {
+      background: rgba(248, 113, 113, 0.15);
+      color: #f87171;
+      border: 1px solid #b91c1c;
     }
     .panel {
       padding: 12px;
@@ -102,10 +112,6 @@
       background: #334155;
       border-radius: 10px;
       cursor: pointer;
-    }
-    #passphrase-input {
-      margin-top: 8px;
-      font-family: monospace;
     }
     #kill-btn {
       margin: 0 12px 12px;
@@ -161,7 +167,7 @@
     <button id="create-file-btn">Создать Christmas.by</button>
   </div>
 
-  <div id="input-area">
+  <div id="input-area" style="display:none;">
     <input type="text" id="msg-input" placeholder="Сообщение..." autocomplete="off">
     <button id="send-btn">Отправить</button>
   </div>
@@ -173,367 +179,483 @@
 </div>
 
 <script>
-const roomInput = document.getElementById('room-id');
-const connectBtn = document.getElementById('connect-btn');
-const persistCheckbox = document.getElementById('persist-checkbox');
-const keyPanel = document.getElementById('key-panel');
-const keyInput = document.getElementById('key-input');
-const genKeyBtn = document.getElementById('gen-key');
-const useKeyBtn = document.getElementById('use-key');
-const fileInput = document.getElementById('file-input');
-const createFileBtn = document.getElementById('create-file-btn');
-const messagesDiv = document.getElementById('messages');
-const inputArea = document.getElementById('input-area');
-const msgInput = document.getElementById('msg-input');
-const sendBtn = document.getElementById('send-btn');
-const statusDiv = document.getElementById('status');
-const killBtn = document.getElementById('kill-btn');
+// === ГЛОБАЛЬНОЕ СОСТОЯНИЕ ===
+const state = {
+  currentTopic: null,
+  aesKey: null,
+  isConnected: false,
+  isKeySet: false,
+  messageHistory: [],
+  currentKeyHex: '',
+  isSecureConnection: false,
+  sentMessageHashes: new Set(),
+  clientId: 'client-' + Math.random().toString(36).substring(2, 10)
+};
 
-let currentTopic = null;
-let aesKey = null;
-let isConnected = false;
-let isKeySet = false;
-let messageHistory = [];
-let currentKeyHex = '';
-let isSecureConnection = false;
-let sentMessages = new Set();
+// === DOM ЭЛЕМЕНТЫ ===
+const elements = {
+  roomInput: document.getElementById('room-id'),
+  connectBtn: document.getElementById('connect-btn'),
+  persistCheckbox: document.getElementById('persist-checkbox'),
+  keyPanel: document.getElementById('key-panel'),
+  keyInput: document.getElementById('key-input'),
+  genKeyBtn: document.getElementById('gen-key'),
+  useKeyBtn: document.getElementById('use-key'),
+  fileInput: document.getElementById('file-input'),
+  createFileBtn: document.getElementById('create-file-btn'),
+  messagesDiv: document.getElementById('messages'),
+  inputArea: document.getElementById('input-area'),
+  msgInput: document.getElementById('msg-input'),
+  sendBtn: document.getElementById('send-btn'),
+  statusDiv: document.getElementById('status'),
+  killBtn: document.getElementById('kill-btn')
+};
 
-// MQTT
+// === MQTT КЛИЕНТ ===
 const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
 
-// === Вспомогательные функции ===
-const generateRoomId = () => 'r-' + Math.random().toString(36).substring(2, 10);
-
-const setStatus = (msg) => { statusDiv.textContent = msg; };
-
-const addMessageToUI = (text, isOwn, isEncrypted = false) => {
-  const div = document.createElement('div');
-  div.className = `msg ${isOwn ? 'my' : 'theirs'}`;
-  div.textContent = text;
-  if (isEncrypted && isOwn) {
-    const badge = document.createElement('div');
-    badge.className = 'encrypted-badge';
-    div.appendChild(badge);
-  }
-  messagesDiv.appendChild(div);
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
-};
-
-const addSystemMsg = (text, isSecure = false) => {
-  const div = document.createElement('div');
-  div.className = 'system';
-  div.textContent = text;
-  if (isSecure) {
-    div.style.color = '#4ade80';
-    div.textContent += ' (безопасное соединение)';
-  }
-  messagesDiv.appendChild(div);
-  messagesDiv.scrollTop = messagesDiv.scrollHeight;
-};
-
-const saveSession = () => {
-  if (!persistCheckbox.checked || !isConnected) {
-    sessionStorage.removeItem('secret-chat-session');
-    return;
-  }
-  sessionStorage.setItem('secret-chat-session', JSON.stringify({
-    room: roomInput.value,
-    messages: messageHistory.map(m => m.raw),
-    timestamp: Date.now()
-  }));
-};
-
-const loadAndDecryptHistory = async () => {
-  messagesDiv.innerHTML = '';
-  for (const item of messageHistory) {
-    if (item.raw.startsWith('ENC:') && isKeySet) {
-      const plain = await decryptMsg(item.raw);
-      addMessageToUI(plain, false, true);
-    } else {
-      addMessageToUI('[🔒 Зашифровано]', false);
+// === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+const utils = {
+  generateRoomId: () => 'r-' + Math.random().toString(36).substring(2, 10),
+  
+  setStatus: (msg) => { elements.statusDiv.textContent = msg; },
+  
+  addMessageToUI: (text, isOwn, isEncrypted = false) => {
+    const div = document.createElement('div');
+    div.className = `msg ${isOwn ? 'my' : 'theirs'}`;
+    div.textContent = text;
+    if (isEncrypted && isOwn) {
+      const badge = document.createElement('div');
+      badge.className = 'encrypted-badge';
+      div.appendChild(badge);
     }
-  }
-};
-
-const encryptMsg = async (plaintext) => {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encoded = new TextEncoder().encode(plaintext);
-  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, encoded);
-  const combined = new Uint8Array(iv.length + cipher.byteLength);
-  combined.set(iv, 0);
-  combined.set(new Uint8Array(cipher), iv.length);
-  return 'ENC:' + btoa(String.fromCharCode.apply(null, combined));
-};
-
-const decryptMsg = async (payload) => {
-  if (!payload.startsWith('ENC:')) return '[Неизвестный формат]';
-  try {
-    const b64 = payload.slice(4);
-    const combined = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    const iv = combined.slice(0, 12);
-    const ct = combined.slice(12);
-    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
-    return new TextDecoder().decode(decrypted);
-  } catch (e) {
-    return '[❌ Ошибка расшифровки]';
-  }
-};
-
-// === Шифрование файла ===
-const deriveKeyFromPassphrase = async (passphrase, salt) => {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(passphrase),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
-  return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
-};
-
-const encryptFileData = async (data, passphrase) => {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const aesKey = await deriveKeyFromPassphrase(passphrase, salt);
-  const encoded = new TextEncoder().encode(data);
-  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, encoded);
-  const result = new Uint8Array(16 + 12 + cipher.byteLength);
-  result.set(salt, 0);
-  result.set(iv, 16);
-  result.set(new Uint8Array(cipher), 28);
-  return result;
-};
-
-const decryptFileData = async (buffer, passphrase) => {
-  const salt = buffer.slice(0, 16);
-  const iv = buffer.slice(16, 28);
-  const ct = buffer.slice(28);
-  const aesKey = await deriveKeyFromPassphrase(passphrase, salt);
-  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
-  return new TextDecoder().decode(decrypted);
-};
-
-const createChristmasFile = async () => {
-  if (!isConnected || !isKeySet) {
-    alert('Сначала активируйте ключ!');
-    return;
-  }
-
-  const passphrase = prompt('Введите кодовую фразу (4–24 символа):');
-  if (!passphrase || passphrase.length < 4 || passphrase.length > 24) {
-    alert('Фраза должна быть от 4 до 24 символов');
-    return;
-  }
-
-  const data = JSON.stringify({ v: 1, room: roomInput.value, key: currentKeyHex });
-  try {
-    const encrypted = await encryptFileData(data, passphrase);
-    const blob = new Blob([encrypted], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'Christmas.by';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    addSystemMsg('✅ Файл Christmas.by создан и зашифрован!', true);
-  } catch (e) {
-    alert('Ошибка шифрования файла');
-  }
-};
-
-const loadChristmasFile = async (file) => {
-  const arrayBuffer = await file.arrayBuffer();
-  const passphrase = prompt('Введите кодовую фразу для Christmas.by:');
-  if (!passphrase) return;
-
-  try {
-    const decrypted = await decryptFileData(arrayBuffer, passphrase);
-    const data = JSON.parse(decrypted);
-    if (data.v !== 1 || !data.room || !/^[0-9a-f]{64}$/.test(data.key)) {
-      throw new Error();
+    elements.messagesDiv.appendChild(div);
+    elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
+  },
+  
+  addSystemMsg: (text, type = 'normal') => {
+    const div = document.createElement('div');
+    div.className = `system ${type === 'secure' ? 'secure' : type === 'warning' ? 'warning' : ''}`;
+    div.textContent = text;
+    elements.messagesDiv.appendChild(div);
+    elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
+  },
+  
+  getMessageHash: (text) => {
+    return btoa(unescape(encodeURIComponent(text)));
+  },
+  
+  saveSession: () => {
+    if (!elements.persistCheckbox.checked || !state.isConnected) {
+      sessionStorage.removeItem('secret-chat-session');
+      return;
     }
-
-    addSystemMsg('✅ Данные загружены из Christmas.by', true);
-    isSecureConnection = true;
-    setStatus('Подключение через файл...');
-    connectBtn.disabled = true;
-    roomInput.disabled = true;
-    await connectToRoom(data.room);
-    await activateKey(data.key);
-  } catch (err) {
-    alert('❌ Неверная фраза или повреждённый файл');
-    setStatus('Ошибка загрузки');
-  }
-};
-
-// === Основные действия ===
-const connectToRoom = (room) => {
-  return new Promise((resolve) => {
-    currentTopic = `sc-${room}`;
-    client.subscribe(currentTopic);
-    isConnected = true;
-    roomInput.value = room;
-    roomInput.disabled = true;
-    connectBtn.disabled = true;
-    keyPanel.style.display = 'flex';
-    setStatus(`Подключено к: ${room}`);
-    resolve();
-  });
-};
-
-const activateKey = async (hex) => {
-  const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(b => parseInt(b, 16)));
-  aesKey = await crypto.subtle.importKey('raw', keyBuf.buffer, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-  isKeySet = true;
-  currentKeyHex = hex;
-
-  keyPanel.style.display = 'none';
-  createFileBtn.parentNode.style.display = 'block';
-  inputArea.style.display = 'flex';
-  setStatus('✅ Ключ активен. Шифрование включено.');
-  addSystemMsg('🔒 Защищённый канал установлен.');
-  await loadAndDecryptHistory();
-  saveSession();
-};
-
-const send = async () => {
-  if (!isConnected || !isKeySet) return;
-  const text = msgInput.value.trim();
-  if (!text) return;
-  const encrypted = await encryptMsg(text);
-  sentMessages.add(encrypted);
-  client.publish(currentTopic, encrypted, { qos: 1 });
-  msgInput.value = '';
-  saveSession();
-};
-
-const resetChat = () => {
-  if (currentTopic) client.publish(currentTopic, 'SYS:WIPE', { qos: 1 });
-  aesKey = null;
-  isConnected = false;
-  isKeySet = false;
-  isSecureConnection = false;
-  messageHistory = [];
-  sentMessages.clear();
-  roomInput.disabled = false;
-  connectBtn.disabled = false;
-  keyPanel.style.display = 'none';
-  createFileBtn.parentNode.style.display = 'none';
-  inputArea.style.display = 'none';
-  messagesDiv.innerHTML = '';
-  persistCheckbox.checked = false;
-  sessionStorage.removeItem('secret-chat-session');
-  roomInput.value = generateRoomId();
-  setStatus('Чат уничтожен. Начата новая сессия.');
-};
-
-// === Инициализация ===
-const init = () => {
-  const saved = sessionStorage.getItem('secret-chat-session');
-  if (saved) {
+    sessionStorage.setItem('secret-chat-session', JSON.stringify({
+      room: elements.roomInput.value,
+      messages: state.messageHistory.map(m => m.raw),
+      timestamp: Date.now()
+    }));
+  },
+  
+  loadSession: () => {
+    const saved = sessionStorage.getItem('secret-chat-session');
+    if (!saved) return false;
     try {
       const s = JSON.parse(saved);
-      if (Date.now() - s.timestamp < 86400000) {
-        roomInput.value = s.room;
-        messageHistory = s.messages.map(m => ({ raw: m }));
-        persistCheckbox.checked = true;
+      if (Date.now() - s.timestamp > 86400000) return false;
+      elements.roomInput.value = s.room;
+      state.messageHistory = s.messages.map(m => ({ raw: m }));
+      elements.persistCheckbox.checked = true;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+  
+  loadAndDecryptHistory: async () => {
+    elements.messagesDiv.innerHTML = '';
+    for (const item of state.messageHistory) {
+      if (item.raw.startsWith('ENC:') && state.isKeySet) {
+        const plain = await cryptoUtils.decryptMsg(item.raw);
+        utils.addMessageToUI(plain, false, true);
+      } else if (item.raw.startsWith('SYS:JOIN:')) {
+        const user = item.raw.split(':')[2];
+        if (state.isSecureConnection) {
+          utils.addSystemMsg(`🔒 ${user} подключился (безопасное соединение)`, 'secure');
+        } else {
+          utils.addSystemMsg(`⚠ ${user} подключился (СОЕДИНЕНИЕ НЕ БЕЗОПАСНО!)`, 'warning');
+        }
+      } else {
+        utils.addMessageToUI('[🔒 Зашифровано]', false);
       }
-    } catch (e) {}
-  }
-  if (!roomInput.value) {
-    roomInput.value = generateRoomId();
+    }
+  },
+  
+  resetUI: () => {
+    elements.keyPanel.style.display = 'none';
+    elements.createFileBtn.parentNode.style.display = 'none';
+    elements.inputArea.style.display = 'none';
+    elements.messagesDiv.innerHTML = '';
+    elements.roomInput.disabled = false;
+    elements.connectBtn.disabled = false;
   }
 };
 
-// === Обработчики ===
-connectBtn.onclick = () => {
-  const room = roomInput.value.trim();
-  if (!room) { alert('Введите ID комнаты'); return; }
-  connectToRoom(room);
-  saveSession();
+// === КРИПТОГРАФИЧЕСКИЕ ФУНКЦИИ ===
+const cryptoUtils = {
+  encryptMsg: async (plaintext) => {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(plaintext);
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, state.aesKey, encoded);
+    const combined = new Uint8Array(iv.length + cipher.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(cipher), iv.length);
+    return 'ENC:' + btoa(String.fromCharCode.apply(null, combined));
+  },
+  
+  decryptMsg: async (payload) => {
+    if (!payload.startsWith('ENC:')) return '[Неизвестный формат]';
+    try {
+      const b64 = payload.slice(4);
+      const combined = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const iv = combined.slice(0, 12);
+      const ct = combined.slice(12);
+      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, state.aesKey, ct);
+      return new TextDecoder().decode(decrypted);
+    } catch (e) {
+      return '[❌ Ошибка расшифровки]';
+    }
+  },
+  
+  deriveKeyFromPassphrase: async (passphrase, salt) => {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(passphrase),
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  },
+  
+  encryptFileData: async (data, passphrase) => {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const aesKey = await cryptoUtils.deriveKeyFromPassphrase(passphrase, salt);
+    const encoded = new TextEncoder().encode(data);
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, encoded);
+    const result = new Uint8Array(16 + 12 + cipher.byteLength);
+    result.set(salt, 0);
+    result.set(iv, 16);
+    result.set(new Uint8Array(cipher), 28);
+    return result;
+  },
+  
+  decryptFileData: async (buffer, passphrase) => {
+    const salt = buffer.slice(0, 16);
+    const iv = buffer.slice(16, 28);
+    const ct = buffer.slice(28);
+    const aesKey = await cryptoUtils.deriveKeyFromPassphrase(passphrase, salt);
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
+    return new TextDecoder().decode(decrypted);
+  }
 };
 
-genKeyBtn.onclick = () => {
+// === ФАЙЛОВЫЕ ОПЕРАЦИИ ===
+const fileUtils = {
+  createChristmasFile: async () => {
+    if (!state.isConnected || !state.isKeySet) {
+      alert('Сначала активируйте ключ!');
+      return;
+    }
+
+    const passphrase = prompt('Введите кодовую фразу (4–24 символа):');
+    if (!passphrase || passphrase.length < 4 || passphrase.length > 24) {
+      alert('Фраза должна быть от 4 до 24 символов');
+      return;
+    }
+
+    const data = JSON.stringify({ 
+      v: 1, 
+      room: elements.roomInput.value, 
+      key: state.currentKeyHex,
+      clientId: state.clientId
+    });
+    try {
+      const encrypted = await cryptoUtils.encryptFileData(data, passphrase);
+      const blob = new Blob([encrypted], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Christmas.by';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      utils.addSystemMsg('✅ Файл Christmas.by создан и зашифрован!', 'secure');
+    } catch (e) {
+      alert('Ошибка шифрования файла');
+    }
+  },
+  
+  loadChristmasFile: async (file) => {
+    const arrayBuffer = await file.arrayBuffer();
+    const passphrase = prompt('Введите кодовую фразу для Christmas.by:');
+    if (!passphrase) return;
+
+    try {
+      const decrypted = await cryptoUtils.decryptFileData(arrayBuffer, passphrase);
+      const data = JSON.parse(decrypted);
+      if (data.v !== 1 || !data.room || !/^[0-9a-f]{64}$/.test(data.key)) {
+        throw new Error();
+      }
+
+      utils.addSystemMsg('✅ Данные загружены из Christmas.by', 'secure');
+      state.isSecureConnection = true;
+      utils.setStatus('Подключение через файл...');
+      elements.connectBtn.disabled = true;
+      elements.roomInput.disabled = true;
+      await chatUtils.connectToRoom(data.room);
+      
+      // Сохраняем clientId из файла для определения безопасного подключения
+      if (data.clientId) {
+        state.secureClientId = data.clientId;
+      }
+      
+      await chatUtils.activateKey(data.key);
+    } catch (err) {
+      alert('❌ Неверная фраза или повреждённый файл');
+      utils.setStatus('Ошибка загрузки');
+    }
+  }
+};
+
+// === ОСНОВНЫЕ ФУНКЦИИ ЧАТА ===
+const chatUtils = {
+  connectToRoom: (room) => {
+    return new Promise((resolve) => {
+      state.currentTopic = `sc-${room}`;
+      client.subscribe(state.currentTopic);
+      state.isConnected = true;
+      elements.roomInput.value = room;
+      elements.roomInput.disabled = true;
+      elements.connectBtn.disabled = true;
+      elements.keyPanel.style.display = 'flex';
+      utils.setStatus(`Подключено к: ${room}`);
+      
+      // Отправляем сообщение о подключении
+      setTimeout(() => {
+        client.publish(state.currentTopic, `SYS:JOIN:${state.clientId}`, { qos: 1 });
+      }, 500);
+      
+      resolve();
+    });
+  },
+  
+  activateKey: async (hex) => {
+    const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(b => parseInt(b, 16)));
+    state.aesKey = await crypto.subtle.importKey('raw', keyBuf.buffer, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+    state.isKeySet = true;
+    state.currentKeyHex = hex;
+
+    elements.keyPanel.style.display = 'none';
+    elements.createFileBtn.parentNode.style.display = 'block';
+    elements.inputArea.style.display = 'flex';
+    utils.setStatus('✅ Ключ активен. Шифрование включено.');
+    utils.addSystemMsg('🔒 Защищённый канал установлен.');
+    await utils.loadAndDecryptHistory();
+    utils.saveSession();
+  },
+  
+  send: async () => {
+    if (!state.isConnected || !state.isKeySet) return;
+    const text = elements.msgInput.value.trim();
+    if (!text) return;
+    
+    // Генерируем уникальный ID для сообщения
+    const messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 8);
+    const fullMessage = `${state.clientId}:${text}:${messageId}`;
+    
+    try {
+      const encrypted = await cryptoUtils.encryptMsg(fullMessage);
+      const messageHash = utils.getMessageHash(fullMessage);
+      state.sentMessageHashes.add(messageHash);
+      
+      // Отображаем сообщение сразу
+      utils.addMessageToUI(text, true, true);
+      
+      // Отправляем в MQTT
+      client.publish(state.currentTopic, encrypted, { qos: 1 });
+      
+      // Добавляем в историю
+      state.messageHistory.push({ raw: encrypted });
+      
+      elements.msgInput.value = '';
+      utils.saveSession();
+    } catch (e) {
+      console.error('Ошибка отправки:', e);
+      utils.addSystemMsg('❌ Ошибка отправки сообщения', 'warning');
+    }
+  },
+  
+  resetChat: () => {
+    if (state.currentTopic) {
+      client.publish(state.currentTopic, 'SYS:WIPE', { qos: 1 });
+    }
+    
+    // Сброс состояния
+    state.aesKey = null;
+    state.isConnected = false;
+    state.isKeySet = false;
+    state.isSecureConnection = false;
+    state.messageHistory = [];
+    state.sentMessageHashes.clear();
+    state.secureClientId = null;
+    
+    // Сброс UI
+    utils.resetUI();
+    elements.persistCheckbox.checked = false;
+    sessionStorage.removeItem('secret-chat-session');
+    
+    // Новый ID комнаты
+    elements.roomInput.value = utils.generateRoomId();
+    utils.setStatus('Чат уничтожен. Начата новая сессия.');
+    
+    // Очистка MQTT
+    if (state.currentTopic) {
+      client.unsubscribe(state.currentTopic);
+      state.currentTopic = null;
+    }
+  }
+};
+
+// === ИНИЦИАЛИЗАЦИЯ ===
+const init = () => {
+  // Проверка поддержки криптографии
+  if (!window.crypto || !window.crypto.subtle) {
+    alert('Ваш браузер не поддерживает криптографию. Используйте Chrome, Firefox или Edge.');
+    return;
+  }
+  
+  // Загрузка сессии
+  if (!utils.loadSession()) {
+    elements.roomInput.value = utils.generateRoomId();
+  }
+  
+  utils.setStatus('Готов к защищённому общению');
+};
+
+// === ОБРАБОТЧИКИ СОБЫТИЙ ===
+elements.connectBtn.onclick = () => {
+  const room = elements.roomInput.value.trim();
+  if (!room) { 
+    alert('Введите ID комнаты'); 
+    return; 
+  }
+  chatUtils.connectToRoom(room);
+  utils.saveSession();
+};
+
+elements.genKeyBtn.onclick = () => {
   const arr = new Uint8Array(32);
   crypto.getRandomValues(arr);
-  keyInput.value = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+  elements.keyInput.value = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
 };
 
-useKeyBtn.onclick = () => {
-  const hex = keyInput.value.trim().toLowerCase();
+elements.useKeyBtn.onclick = () => {
+  const hex = elements.keyInput.value.trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(hex)) {
     alert('Ключ — 64 символа hex (0-9, a-f)');
     return;
   }
-  activateKey(hex);
+  chatUtils.activateKey(hex);
 };
 
-fileInput.onchange = (e) => {
+elements.fileInput.onchange = (e) => {
   const file = e.target.files[0];
   if (file && file.name.endsWith('.by')) {
-    loadChristmasFile(file);
+    fileUtils.loadChristmasFile(file);
   } else {
     alert('Выберите файл с расширением .by');
   }
 };
 
-createFileBtn.onclick = createChristmasFile;
-sendBtn.onclick = send;
-msgInput.onkeypress = (e) => { if (e.key === 'Enter') send(); };
-killBtn.onclick = resetChat;
-persistCheckbox.onchange = saveSession;
+elements.createFileBtn.onclick = fileUtils.createChristmasFile;
+elements.sendBtn.onclick = chatUtils.send;
+elements.msgInput.onkeypress = (e) => { if (e.key === 'Enter') chatUtils.send(); };
+elements.killBtn.onclick = chatUtils.resetChat;
+elements.persistCheckbox.onchange = utils.saveSession;
 
-// === MQTT обработка ===
+// === ОБРАБОТКА MQTT СООБЩЕНИЙ ===
 client.on('message', async (topic, payload) => {
-  if (topic !== currentTopic) return;
+  if (topic !== state.currentTopic || !state.isConnected) return;
+  
   const msg = payload.toString();
-  const isLocal = sentMessages.has(msg);
+  const isSystemMessage = msg.startsWith('SYS:');
   
-  if (isLocal) {
-    sentMessages.delete(msg);
-    return; // Не дублируем локальные сообщения
-  }
-
-  messageHistory.push({ raw: msg });
-  
-  if (isKeySet) {
-    const plain = await decryptMsg(msg);
-    addMessageToUI(plain, false, true);
-  } else {
-    addMessageToUI('[🔒 Зашифровано]', false);
-  }
-  
-  // Уведомление о подключении
-  if (msg.startsWith('SYS:JOIN:')) {
-    const user = msg.split(':')[2];
-    if (isSecureConnection) {
-      addSystemMsg(`🔒 ${user} подключился (безопасное соединение)`, true);
-    } else {
-      addSystemMsg(`⚠ ${user} подключился (СОЕДИНЕНИЕ НЕ БЕЗОПАСНО!)`, false);
+  // Обработка системных сообщений
+  if (isSystemMessage) {
+    if (msg.startsWith('SYS:JOIN:')) {
+      const clientId = msg.split(':')[2];
+      const isSecure = state.isSecureConnection || (state.secureClientId && state.secureClientId === clientId);
+      
+      if (clientId !== state.clientId) {
+        if (isSecure) {
+          utils.addSystemMsg(`🔒 Корреспондент подключился безопасно`, 'secure');
+        } else {
+          utils.addSystemMsg(`⚠ ВНИМАНИЕ: соединение НЕ безопасно!`, 'warning');
+        }
+      }
     }
+    return;
   }
   
-  saveSession();
+  // Проверка на дубликат
+  const messageHash = utils.getMessageHash(msg);
+  if (state.sentMessageHashes.has(messageHash)) {
+    state.sentMessageHashes.delete(messageHash);
+    return;
+  }
+  
+  // Добавление в историю
+  state.messageHistory.push({ raw: msg });
+  
+  // Отображение сообщения
+  if (state.isKeySet) {
+    try {
+      const fullText = await cryptoUtils.decryptMsg(msg);
+      const [senderId, text, messageId] = fullText.split(':');
+      
+      if (senderId && text) {
+        const isOwn = senderId === state.clientId;
+        utils.addMessageToUI(text, isOwn, true);
+      }
+    } catch (e) {
+      utils.addMessageToUI('[❌ Ошибка расшифровки]', false);
+    }
+  } else {
+    utils.addMessageToUI('[🔒 Зашифровано]', false);
+  }
+  
+  utils.saveSession();
 });
 
-// Запуск
+// === ЗАПУСК ===
 window.onload = init;
 
-// При подключении отправляем сигнал
-client.on('connect', () => {
-  if (isConnected) {
-    client.publish(currentTopic, `SYS:JOIN:${Date.now()}`, { qos: 1 });
+// Обработка закрытия вкладки
+window.onbeforeunload = () => {
+  if (state.isConnected && state.currentTopic) {
+    client.publish(state.currentTopic, `SYS:LEAVE:${state.clientId}`, { qos: 1 });
   }
-});
+};
 </script>
 </body>
 </html>
