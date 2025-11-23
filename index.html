@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔒 СЕКРЕТНЫЙ ЧАТ</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      margin: 0;
+      padding: 16px;
+      color: #e2e8f0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+    }
+    #chat-container {
+      width: 100%;
+      max-width: 580px;
+      background: #1e293b;
+      border-radius: 20px;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+      overflow: hidden;
+    }
+    #messages {
+      height: 400px;
+      overflow-y: auto;
+      padding: 16px;
+      background: #0f172a;
+    }
+    .msg {
+      margin-bottom: 12px;
+      padding: 12px 16px;
+      border-radius: 18px;
+      max-width: 85%;
+      word-wrap: break-word;
+      font-size: 16px;
+    }
+    .my { background: #4f46e5; color: white; margin-left: auto; }
+    .theirs { background: #334155; color: white; }
+    .system {
+      text-align: center;
+      color: #94a3b8;
+      font-size: 14px;
+      margin: 10px 0;
+    }
+    .panel {
+      padding: 16px;
+      background: #1e293b;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    input, button {
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid #334155;
+      font-size: 16px;
+      background: #334155;
+      color: #f1f5f9;
+    }
+    input {
+      flex: 1;
+      min-width: 120px;
+    }
+    button {
+      background: #4f46e5;
+      cursor: pointer;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled {
+      background: #64748b;
+      cursor: not-allowed;
+    }
+    #key-input {
+      font-family: monospace;
+    }
+    #input-area {
+      display: none;
+      padding: 16px;
+      background: #0f172a;
+      border-top: 1px solid #334155;
+    }
+    #share-area {
+      display: none;
+      padding: 12px;
+      background: #0f172a;
+      text-align: center;
+    }
+    #share-link {
+      width: 100%;
+      padding: 10px;
+      background: #1e293b;
+      color: #60a5fa;
+      border: 1px dashed #4f46e5;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #status {
+      padding: 12px;
+      text-align: center;
+      font-size: 14px;
+      color: #94a3b8;
+      background: #0f172a;
+    }
+  </style>
+</head>
+<body>
+
+<div id="chat-container">
+  <div class="panel">
+    <input type="text" id="room-id" placeholder="ID комнаты (любой)" title="Любая строка — номер вашей защищённой комнаты">
+    <button id="connect-btn">Подключиться</button>
+  </div>
+
+  <div class="panel" id="key-panel" style="display:none;">
+    <input type="text" id="key-input" placeholder="AES-256 ключ (64 hex)" maxlength="64" title="64-символьный HEX-ключ (0-9, a-f). Передавайте лично!">
+    <button id="gen-key">Сгенерировать</button>
+    <button id="use-key">Использовать ключ</button>
+  </div>
+
+  <div id="share-area">
+    <div>🔗 Отправьте эту ссылку собеседнику:</div>
+    <input type="text" id="share-link" readonly onclick="this.select()">
+    <button id="copy-link" style="margin-top:8px;">Копировать</button>
+  </div>
+
+  <div id="messages"></div>
+
+  <div id="input-area">
+    <input type="text" id="msg-input" placeholder="Секретное сообщение..." autocomplete="off">
+    <button id="send-btn">Отправить</button>
+  </div>
+
+  <div id="status">Введите ID комнаты и ключ для начала</div>
+</div>
+
+<script>
+  const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+  const roomInput = document.getElementById('room-id');
+  const connectBtn = document.getElementById('connect-btn');
+  const keyPanel = document.getElementById('key-panel');
+  const keyInput = document.getElementById('key-input');
+  const genKeyBtn = document.getElementById('gen-key');
+  const useKeyBtn = document.getElementById('use-key');
+  const shareArea = document.getElementById('share-area');
+  const shareLink = document.getElementById('share-link');
+  const copyLinkBtn = document.getElementById('copy-link');
+  const messagesDiv = document.getElementById('messages');
+  const inputArea = document.getElementById('input-area');
+  const msgInput = document.getElementById('msg-input');
+  const sendBtn = document.getElementById('send-btn');
+  const statusDiv = document.getElementById('status');
+
+  let currentTopic = null;
+  let aesKey = null;
+  let isConnected = false;
+  let isKeySet = false;
+  let currentKeyHex = '';
+
+  // === Автоматическая обработка ссылки при загрузке ===
+  window.onload = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get('room');
+    const key = urlParams.get('key');
+
+    if (room && key && /^[0-9a-f]{64}$/.test(key.toLowerCase())) {
+      // Удаляем ключ из URL (без перезагрузки)
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      roomInput.value = room;
+      await simulateConnect(room);
+      await simulateUseKey(key.toLowerCase());
+    } else {
+      // Генерация случайного ID по умолчанию
+      if (!roomInput.value) {
+        roomInput.value = 'room-' + Math.random().toString(36).slice(2, 10);
+      }
+    }
+  };
+
+  async function simulateConnect(room) {
+    currentTopic = `sc-${room}`;
+    client.subscribe(currentTopic);
+    isConnected = true;
+    keyPanel.style.display = 'flex';
+    statusDiv.textContent = `Подключено к комнате: ${room}`;
+    connectBtn.disabled = true;
+    roomInput.disabled = true;
+  }
+
+  async function simulateUseKey(hex) {
+    const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(byte => parseInt(byte, 16)));
+    aesKey = await crypto.subtle.importKey(
+      'raw',
+      keyBuf.buffer,
+      { name: 'AES-GCM' },
+      false,
+      ['encrypt', 'decrypt']
+    );
+    isKeySet = true;
+    currentKeyHex = hex;
+    keyPanel.style.display = 'none';
+    inputArea.style.display = 'block';
+    shareArea.style.display = 'block';
+    generateShareLink(roomInput.value, hex);
+    statusDiv.textContent = '✅ Ключ активен. Все сообщения зашифрованы.';
+    addSystemMsg('🔒 Шифрование включено. Только обладатель ключа видит сообщения.');
+  }
+
+  // Генерация ссылки
+  function generateShareLink(room, key) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('room', room);
+    url.searchParams.set('key', key);
+    shareLink.value = url.toString();
+  }
+
+  genKeyBtn.onclick = () => {
+    const arr = new Uint8Array(32);
+    crypto.getRandomValues(arr);
+    keyInput.value = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  connectBtn.onclick = () => {
+    const room = roomInput.value.trim();
+    if (!room) return alert('Укажите ID комнаты');
+    simulateConnect(room);
+  };
+
+  useKeyBtn.onclick = async () => {
+    const hex = keyInput.value.trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(hex)) {
+      return alert('Ключ должен быть 64 символа HEX (0-9, a-f)');
+    }
+    await simulateUseKey(hex);
+  };
+
+  copyLinkBtn.onclick = () => {
+    shareLink.select();
+    document.execCommand('copy');
+    alert('Ссылка скопирована! Отправьте её собеседнику.');
+  };
+
+  // Шифрование / дешифровка
+  async function encryptMsg(plaintext) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(plaintext);
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, encoded);
+    const combined = new Uint8Array(iv.length + cipher.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(cipher), iv.length);
+    return 'ENC:' + btoa(String.fromCharCode.apply(null, combined));
+  }
+
+  async function decryptMsg(payload) {
+    if (!payload.startsWith('ENC:')) return '[Неизвестный формат]';
+    try {
+      const b64 = payload.slice(4);
+      const combined = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const iv = combined.slice(0, 12);
+      const ct = combined.slice(12);
+      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
+      return new TextDecoder().decode(decrypted);
+    } catch (e) {
+      return '[❌ Не удалось расшифровать — неверный ключ]';
+    }
+  }
+
+  // Отправка
+  async function send() {
+    if (!isConnected || !isKeySet) return;
+    const text = msgInput.value.trim();
+    if (!text) return;
+    const encrypted = await encryptMsg(text);
+    client.publish(currentTopic, encrypted, { qos: 1 });
+    addMessage(text, true);
+    msgInput.value = '';
+  }
+
+  sendBtn.onclick = send;
+  msgInput.onkeypress = e => { if (e.key === 'Enter') send(); };
+
+  // Получение
+  client.on('message', async (topic, payload) => {
+    if (topic !== currentTopic) return;
+    const msg = payload.toString();
+    if (isKeySet) {
+      const plain = await decryptMsg(msg);
+      addMessage(plain, false);
+    } else {
+      addMessage('[🔒 Зашифровано — введите ключ]', false);
+    }
+  });
+
+  // UI
+  function addMessage(text, isOwn) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + (isOwn ? 'my' : 'theirs');
+    div.textContent = text;
+    messagesDiv.appendChild(div);
+    div.scrollIntoView();
+  }
+
+  function addSystemMsg(text) {
+    const div = document.createElement('div');
+    div.className = 'system';
+    div.textContent = text;
+    messagesDiv.appendChild(div);
+    div.scrollIntoView();
+  }
+</script>
+</body>
+</html>
