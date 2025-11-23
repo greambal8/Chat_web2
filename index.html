@@ -81,6 +81,24 @@
       flex: 1;
       min-width: 200px;
     }
+    /* Панель ключей */
+    #key-panel {
+      padding: 12px;
+      background: rgba(99, 102, 241, 0.1);
+      border-bottom: 1px solid var(--primary);
+      display: none;
+    }
+    #key-input {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #1e293b;
+      color: var(--light);
+      font-family: monospace;
+      font-size: 14px;
+      min-width: 150px;
+    }
     /* Сообщения */
     #messages {
       flex: 1;
@@ -261,6 +279,13 @@
     .btn-danger:hover {
       opacity: 0.9;
     }
+    .btn-warning {
+      background: var(--warning);
+      color: var(--dark);
+    }
+    .btn-warning:hover {
+      opacity: 0.9;
+    }
     /* Меню */
     #menu-panel {
       position: fixed;
@@ -312,6 +337,9 @@
       #menu-panel {
         width: 100%;
       }
+      #key-input {
+        min-width: 100%;
+      }
     }
   </style>
 </head>
@@ -338,6 +366,14 @@
         <input type="checkbox" id="persist-checkbox">
         <span>Запомнить сессию</span>
       </label>
+    </div>
+  </div>
+
+  <div id="key-panel">
+    <div class="control-group">
+      <input type="text" id="key-input" placeholder="AES-256 ключ (64 hex символа)" maxlength="64">
+      <button class="btn btn-warning" id="generate-key-btn">Сгенерировать ключ</button>
+      <button class="btn btn-primary" id="activate-key-btn">Активировать</button>
     </div>
   </div>
 
@@ -380,6 +416,12 @@
   <div class="menu-item">
     🔑 Статус шифрования: <span id="encryption-status">Не активно</span>
   </div>
+  <div class="menu-item">
+    💻 Мой ID: <span id="client-id">${state.clientId.substring(0, 8)}...</span>
+  </div>
+  <div class="menu-item">
+    👤 Моё имя: <span id="self-name">-</span>
+  </div>
 </div>
 
 <script>
@@ -399,8 +441,8 @@ const state = {
 };
 
 // === СПИСКИ ДЛЯ ГЕНЕРАЦИИ ИМЁН ===
-const nameColors = ['Синий', 'Красный', 'Зелёный', 'Жёлтый', 'Фиолетовый', 'Оранжевый', 'Розовый', 'Голубой', 'Серый', 'Бирюзовый', 'Индиго', 'Бордовый', 'Бронзовый', 'Серебряный', 'Золотой', 'Хаки', 'Мятный', 'Лавандовый'];
-const nameAnimals = ['Волк', 'Лиса', 'Сова', 'Ястреб', 'Тигр', 'Медведь', 'Леопард', 'Орёл', 'Дракон', 'Феникс', 'Лев', 'Змея', 'Кот', 'Пёс', 'Кролик', 'Лошадь', 'Слон', 'Обезьяна', 'Панда', 'Крокодил', 'Черепаха', 'Кит', 'Акула', 'Осьминог'];
+const nameColors = ['Синий', 'Красный', 'Зелёный', 'Жёлтый', 'Фиолетовый', 'Оранжевый', 'Розовый', 'Голубой', 'Серый', 'Бирюзовый', 'Индиго', 'Бордовый', 'Бронзовый', 'Серебряный', 'Золотой', 'Хаки', 'Мятный', 'Лавандовый', 'Бежевый', 'Коричневый'];
+const nameAnimals = ['Волк', 'Лиса', 'Сова', 'Ястреб', 'Тигр', 'Медведь', 'Леопард', 'Орёл', 'Дракон', 'Феникс', 'Лев', 'Змея', 'Кот', 'Пёс', 'Кролик', 'Лошадь', 'Слон', 'Обезьяна', 'Панда', 'Крокодил', 'Черепаха', 'Кит', 'Акула', 'Осьминог', 'Сокол', 'Ворон', 'Лось', 'Ёж'];
 
 // === DOM ЭЛЕМЕНТЫ ===
 const elements = {
@@ -409,6 +451,10 @@ const elements = {
   roomInput: document.getElementById('room-id'),
   connectBtn: document.getElementById('connect-btn'),
   persistCheckbox: document.getElementById('persist-checkbox'),
+  keyPanel: document.getElementById('key-panel'),
+  keyInput: document.getElementById('key-input'),
+  generateKeyBtn: document.getElementById('generate-key-btn'),
+  activateKeyBtn: document.getElementById('activate-key-btn'),
   loadFileBtn: document.getElementById('load-file-btn'),
   createFileBtn: document.getElementById('create-file-btn'),
   messagesDiv: document.getElementById('messages'),
@@ -422,7 +468,9 @@ const elements = {
   killChatBtn: document.getElementById('kill-chat-btn'),
   participantsCount: document.getElementById('participants-count'),
   lastActivity: document.getElementById('last-activity'),
-  encryptionStatus: document.getElementById('encryption-status')
+  encryptionStatus: document.getElementById('encryption-status'),
+  clientIdSpan: document.getElementById('client-id'),
+  selfNameSpan: document.getElementById('self-name')
 };
 
 // === MQTT КЛИЕНТ ===
@@ -457,6 +505,16 @@ const utils = {
         if (name === newName && id !== clientId) {
           isUnique = false;
           break;
+        }
+      }
+      
+      // Проверяем среди сохраненных имен
+      if (isUnique) {
+        for (const savedName of Object.values(storedNames)) {
+          if (savedName === newName) {
+            isUnique = false;
+            break;
+          }
         }
       }
     }
@@ -525,6 +583,7 @@ const utils = {
     // Обновляем статистику
     elements.lastActivity.textContent = utils.formatTime(timestamp);
     elements.participantsCount.textContent = state.participants.size;
+    elements.selfNameSpan.textContent = state.selfName;
   },
   
   addSystemMessage: (text, type = 'normal') => {
@@ -585,6 +644,7 @@ const utils = {
   },
   
   resetUI: () => {
+    elements.keyPanel.style.display = 'none';
     elements.createFileBtn.style.display = 'none';
     elements.inputArea.style.display = 'none';
     elements.sendBtn.disabled = true;
@@ -594,11 +654,19 @@ const utils = {
     state.participants.clear();
     elements.participantsCount.textContent = '0';
     elements.encryptionStatus.textContent = 'Не активно';
+    state.selfName = '';
+    elements.selfNameSpan.textContent = '-';
   }
 };
 
 // === КРИПТОГРАФИЧЕСКИЕ ФУНКЦИИ ===
 const cryptoUtils = {
+  generateRandomAESKey: () => {
+    const arr = new Uint8Array(32); // 256 бит
+    crypto.getRandomValues(arr);
+    return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+  },
+  
   encryptMsg: async (plaintext) => {
     if (!state.aesKey) throw new Error('Ключ не установлен');
     
@@ -669,7 +737,7 @@ const cryptoUtils = {
   
   generateAESKey: async (hex) => {
     if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
-      throw new Error('Неверный формат ключа');
+      throw new Error('Неверный формат ключа (должно быть 64 hex символа)');
     }
     
     const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(byte => parseInt(byte, 16)));
@@ -682,6 +750,8 @@ const cryptoUtils = {
     );
     state.isKeySet = true;
     elements.encryptionStatus.textContent = 'Активно (AES-GCM)';
+    utils.showNotification('✅ Ключ успешно активирован!', 'secure');
+    utils.addSystemMessage('🔒 Шифрование активировано. Все сообщения защищены.', 'secure');
   }
 };
 
@@ -699,16 +769,11 @@ const fileUtils = {
       return;
     }
 
-    const keyHex = Array.from(new Uint8Array(32), () => Math.floor(Math.random() * 256))
-      .map(b => b.toString(16).padStart(2, '0')).join('');
-      
     try {
-      await cryptoUtils.generateAESKey(keyHex);
-      
       const data = JSON.stringify({ 
         v: 1, 
         room: elements.roomInput.value, 
-        key: keyHex,
+        key: elements.keyInput.value.trim(),
         clientId: state.clientId,
         selfName: state.selfName,
         timestamp: Date.now()
@@ -759,7 +824,8 @@ const fileUtils = {
       // Подключаемся к комнате
       await chatUtils.connectToRoom(room);
       
-      // Активируем ключ
+      // Устанавливаем ключ
+      elements.keyInput.value = key;
       await cryptoUtils.generateAESKey(key);
       state.isSecureConnection = true;
       
@@ -792,7 +858,8 @@ const chatUtils = {
       elements.roomInput.value = room;
       elements.roomInput.disabled = true;
       elements.connectBtn.disabled = true;
-      elements.createFileBtn.style.display = 'block';
+      elements.keyPanel.style.display = 'flex';
+      elements.createFileBtn.style.display = 'none';
       
       utils.updateStatus(`Подключено: ${room}`, state.isSecureConnection);
       
@@ -992,6 +1059,8 @@ const init = () => {
   
   // Генерация уникального имени
   state.selfName = utils.generateUniqueName(state.clientId);
+  elements.selfNameSpan.textContent = state.selfName;
+  elements.clientIdSpan.textContent = state.clientId.substring(0, 8) + '...';
   
   // Загрузка сессии
   if (!utils.loadSession()) {
@@ -1042,6 +1111,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     chatUtils.connectToRoom(room);
     utils.saveSession();
+  };
+  
+  // Генерация ключа
+  elements.generateKeyBtn.onclick = () => {
+    elements.keyInput.value = cryptoUtils.generateRandomAESKey();
+    utils.showNotification('✅ Ключ сгенерирован!', 'secure');
+  };
+  
+  // Активация ключа
+  elements.activateKeyBtn.onclick = async () => {
+    const hex = elements.keyInput.value.trim();
+    if (!hex) {
+      utils.showNotification('❌ Введите ключ', 'danger');
+      return;
+    }
+    
+    try {
+      await cryptoUtils.generateAESKey(hex);
+      elements.keyPanel.style.display = 'none';
+      elements.inputArea.style.display = 'flex';
+      elements.sendBtn.disabled = false;
+      elements.createFileBtn.style.display = 'block';
+      
+      // Отправляем сообщение о готовности
+      setTimeout(() => {
+        chatUtils.sendSystemMessage(`READY:${state.clientId}:${state.selfName}`);
+      }, 300);
+      
+    } catch (e) {
+      utils.showNotification(`❌ ${e.message}`, 'danger');
+    }
   };
   
   // Загрузка файла
