@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>🔒 СЕКРЕТНЫЙ ЧАТ</title>
+  <title>🔒 Телеметрия-чат</title>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
@@ -188,8 +188,15 @@ const state = {
   messageHistory: [],
   currentKeyHex: '',
   isSecureConnection: false,
-  sentMessageHashes: new Set(),
-  clientId: 'client-' + Math.random().toString(36).substring(2, 10)
+  clientId: 'dev-' + Math.random().toString(36).substring(2, 10),
+  lastMessageTime: 0,
+  telemetryPattern: {
+    device_id: 'sensor-0000',
+    ts: Date.now(),
+    data: 'ENC:',
+    v: 1,
+    type: 'temp'
+  }
 };
 
 // === DOM ЭЛЕМЕНТЫ ===
@@ -212,7 +219,10 @@ const elements = {
 };
 
 // === MQTT КЛИЕНТ ===
-const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+  clientId: state.clientId,
+  clean: true
+});
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 const utils = {
@@ -241,10 +251,6 @@ const utils = {
     elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
   },
   
-  getMessageHash: (text) => {
-    return btoa(unescape(encodeURIComponent(text)));
-  },
-  
   saveSession: () => {
     if (!elements.persistCheckbox.checked || !state.isConnected) {
       sessionStorage.removeItem('secret-chat-session');
@@ -252,7 +258,7 @@ const utils = {
     }
     sessionStorage.setItem('secret-chat-session', JSON.stringify({
       room: elements.roomInput.value,
-      messages: state.messageHistory.map(m => m.raw),
+      key: state.currentKeyHex,
       timestamp: Date.now()
     }));
   },
@@ -264,7 +270,7 @@ const utils = {
       const s = JSON.parse(saved);
       if (Date.now() - s.timestamp > 86400000) return false;
       elements.roomInput.value = s.room;
-      state.messageHistory = s.messages.map(m => ({ raw: m }));
+      state.currentKeyHex = s.key;
       elements.persistCheckbox.checked = true;
       return true;
     } catch (e) {
@@ -278,13 +284,8 @@ const utils = {
       if (item.raw.startsWith('ENC:') && state.isKeySet) {
         const plain = await cryptoUtils.decryptMsg(item.raw);
         utils.addMessageToUI(plain, false, true);
-      } else if (item.raw.startsWith('SYS:JOIN:')) {
-        const user = item.raw.split(':')[2];
-        if (state.isSecureConnection) {
-          utils.addSystemMsg(`🔒 ${user} подключился (безопасное соединение)`, 'secure');
-        } else {
-          utils.addSystemMsg(`⚠ ${user} подключился (СОЕДИНЕНИЕ НЕ БЕЗОПАСНО!)`, 'warning');
-        }
+      } else if (item.type === 'system' && item.secure !== undefined) {
+        utils.addSystemMsg(item.text, item.secure ? 'secure' : 'warning');
       } else {
         utils.addMessageToUI('[🔒 Зашифровано]', false);
       }
@@ -386,7 +387,8 @@ const fileUtils = {
       v: 1, 
       room: elements.roomInput.value, 
       key: state.currentKeyHex,
-      clientId: state.clientId
+      clientId: state.clientId,
+      timestamp: Date.now()
     });
     try {
       const encrypted = await cryptoUtils.encryptFileData(data, passphrase);
@@ -424,10 +426,9 @@ const fileUtils = {
       elements.roomInput.disabled = true;
       await chatUtils.connectToRoom(data.room);
       
-      // Сохраняем clientId из файла для определения безопасного подключения
-      if (data.clientId) {
-        state.secureClientId = data.clientId;
-      }
+      // Сброс истории при новом подключении через файл
+      state.messageHistory = [];
+      state.lastMessageTime = Date.now();
       
       await chatUtils.activateKey(data.key);
     } catch (err) {
@@ -441,7 +442,7 @@ const fileUtils = {
 const chatUtils = {
   connectToRoom: (room) => {
     return new Promise((resolve) => {
-      state.currentTopic = `sc-${room}`;
+      state.currentTopic = `telemetry/${room}`;
       client.subscribe(state.currentTopic);
       state.isConnected = true;
       elements.roomInput.value = room;
@@ -450,9 +451,16 @@ const chatUtils = {
       elements.keyPanel.style.display = 'flex';
       utils.setStatus(`Подключено к: ${room}`);
       
-      // Отправляем сообщение о подключении
+      // Отправляем сообщение о подключении (как телеметрия)
       setTimeout(() => {
-        client.publish(state.currentTopic, `SYS:JOIN:${state.clientId}`, { qos: 1 });
+        const telemetry = {
+          device_id: state.clientId,
+          ts: Date.now(),
+          data: `JOIN:${state.clientId}`,
+          v: 1,
+          type: 'event'
+        };
+        client.publish(state.currentTopic, JSON.stringify(telemetry), { qos: 1 });
       }, 500);
       
       resolve();
@@ -479,25 +487,38 @@ const chatUtils = {
     const text = elements.msgInput.value.trim();
     if (!text) return;
     
-    // Генерируем уникальный ID для сообщения
+    // Генерируем уникальный ID
     const messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 8);
-    const fullMessage = `${state.clientId}:${text}:${messageId}`;
+    const fullMessage = `${text}:${messageId}`;
     
     try {
       const encrypted = await cryptoUtils.encryptMsg(fullMessage);
-      const messageHash = utils.getMessageHash(fullMessage);
-      state.sentMessageHashes.add(messageHash);
+      
+      // Формируем телеметрию
+      const telemetry = {
+        device_id: state.clientId,
+        ts: Date.now(),
+        data: encrypted,
+        v: 1,
+        type: 'temp',
+        unit: 'C'
+      };
       
       // Отображаем сообщение сразу
       utils.addMessageToUI(text, true, true);
       
       // Отправляем в MQTT
-      client.publish(state.currentTopic, encrypted, { qos: 1 });
+      client.publish(state.currentTopic, JSON.stringify(telemetry), { qos: 1 });
       
       // Добавляем в историю
-      state.messageHistory.push({ raw: encrypted });
+      state.messageHistory.push({ 
+        raw: encrypted,
+        type: 'message',
+        timestamp: Date.now()
+      });
       
       elements.msgInput.value = '';
+      state.lastMessageTime = Date.now();
       utils.saveSession();
     } catch (e) {
       console.error('Ошибка отправки:', e);
@@ -507,7 +528,14 @@ const chatUtils = {
   
   resetChat: () => {
     if (state.currentTopic) {
-      client.publish(state.currentTopic, 'SYS:WIPE', { qos: 1 });
+      const telemetry = {
+        device_id: state.clientId,
+        ts: Date.now(),
+        data: 'WIPE',
+        v: 1,
+        type: 'event'
+      };
+      client.publish(state.currentTopic, JSON.stringify(telemetry), { qos: 1 });
     }
     
     // Сброс состояния
@@ -516,8 +544,7 @@ const chatUtils = {
     state.isKeySet = false;
     state.isSecureConnection = false;
     state.messageHistory = [];
-    state.sentMessageHashes.clear();
-    state.secureClientId = null;
+    state.lastMessageTime = 0;
     
     // Сброс UI
     utils.resetUI();
@@ -597,54 +624,76 @@ elements.persistCheckbox.onchange = utils.saveSession;
 client.on('message', async (topic, payload) => {
   if (topic !== state.currentTopic || !state.isConnected) return;
   
-  const msg = payload.toString();
-  const isSystemMessage = msg.startsWith('SYS:');
-  
-  // Обработка системных сообщений
-  if (isSystemMessage) {
-    if (msg.startsWith('SYS:JOIN:')) {
-      const clientId = msg.split(':')[2];
-      const isSecure = state.isSecureConnection || (state.secureClientId && state.secureClientId === clientId);
+  try {
+    const telemetry = JSON.parse(payload.toString());
+    
+    // Игнорируем старые сообщения (более 24 часов)
+    if (Date.now() - telemetry.ts > 86400000) return;
+    
+    // Обработка системных событий
+    if (telemetry.type === 'event' && telemetry.data.startsWith('JOIN:')) {
+      const clientId = telemetry.data.split(':')[1];
+      const isSecure = state.isSecureConnection || clientId === state.clientId;
       
       if (clientId !== state.clientId) {
         if (isSecure) {
+          // Сохраняем системное сообщение
+          state.messageHistory.push({
+            type: 'system',
+            text: `🔒 Корреспондент подключился безопасно`,
+            secure: true,
+            timestamp: telemetry.ts
+          });
           utils.addSystemMsg(`🔒 Корреспондент подключился безопасно`, 'secure');
         } else {
+          state.messageHistory.push({
+            type: 'system',
+            text: `⚠ ВНИМАНИЕ: соединение НЕ безопасно!`,
+            secure: false,
+            timestamp: telemetry.ts
+          });
           utils.addSystemMsg(`⚠ ВНИМАНИЕ: соединение НЕ безопасно!`, 'warning');
         }
       }
+      return;
     }
-    return;
-  }
-  
-  // Проверка на дубликат
-  const messageHash = utils.getMessageHash(msg);
-  if (state.sentMessageHashes.has(messageHash)) {
-    state.sentMessageHashes.delete(messageHash);
-    return;
-  }
-  
-  // Добавление в историю
-  state.messageHistory.push({ raw: msg });
-  
-  // Отображение сообщения
-  if (state.isKeySet) {
-    try {
-      const fullText = await cryptoUtils.decryptMsg(msg);
-      const [senderId, text, messageId] = fullText.split(':');
+    
+    // Обработка данных
+    if (telemetry.type === 'temp' && telemetry.data.startsWith('ENC:')) {
+      const encrypted = telemetry.data;
       
-      if (senderId && text) {
-        const isOwn = senderId === state.clientId;
-        utils.addMessageToUI(text, isOwn, true);
+      // Проверка на дубликат
+      if (state.lastMessageTime >= telemetry.ts) return;
+      
+      // Добавление в историю
+      state.messageHistory.push({ 
+        raw: encrypted,
+        type: 'message',
+        timestamp: telemetry.ts
+      });
+      
+      // Отображение сообщения
+      if (state.isKeySet) {
+        try {
+          const fullText = await cryptoUtils.decryptMsg(encrypted);
+          const [text] = fullText.split(':');
+          
+          if (text) {
+            utils.addMessageToUI(text, false, true);
+          }
+        } catch (e) {
+          utils.addMessageToUI('[❌ Ошибка расшифровки]', false);
+        }
+      } else {
+        utils.addMessageToUI('[🔒 Зашифровано]', false);
       }
-    } catch (e) {
-      utils.addMessageToUI('[❌ Ошибка расшифровки]', false);
+      
+      state.lastMessageTime = telemetry.ts;
+      utils.saveSession();
     }
-  } else {
-    utils.addMessageToUI('[🔒 Зашифровано]', false);
+  } catch (e) {
+    console.error('Ошибка обработки MQTT:', e);
   }
-  
-  utils.saveSession();
 });
 
 // === ЗАПУСК ===
@@ -653,7 +702,14 @@ window.onload = init;
 // Обработка закрытия вкладки
 window.onbeforeunload = () => {
   if (state.isConnected && state.currentTopic) {
-    client.publish(state.currentTopic, `SYS:LEAVE:${state.clientId}`, { qos: 1 });
+    const telemetry = {
+      device_id: state.clientId,
+      ts: Date.now(),
+      data: 'LEAVE',
+      v: 1,
+      type: 'event'
+    };
+    client.publish(state.currentTopic, JSON.stringify(telemetry), { qos: 1 });
   }
 };
 </script>
