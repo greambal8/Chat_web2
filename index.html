@@ -171,85 +171,12 @@
 </div>
 
 <script>
-// === Простой QR-генератор (на основе таблицы) ===
-function drawQRCode(canvas, text) {
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // Простая замена: рисуем текст, если нет библиотеки
-  // Но мы встроим мини-кодировщик для 40 символов
-  const size = 21; // QR Version 1
-  const modules = Array(size).fill().map(() => Array(size).fill(false));
-
-  // Заглушки: угловые позиции
-  function drawFinder(x, y) {
-    for (let i = -1; i <= 7; i++) {
-      for (let j = -1; j <= 7; j++) {
-        if (x+i >= 0 && x+i < size && y+j >= 0 && y+j < size) {
-          if ((i === -1 || i === 7 || j === -1 || j === 7) ||
-              (i >= 0 && i <= 6 && j >= 0 && j <= 6 && (i%2 === 0 || j%2 === 0))) {
-            modules[y+j][x+i] = true;
-          }
-        }
-      }
-    }
-  }
-  drawFinder(0, 0);
-  drawFinder(size-7, 0);
-  drawFinder(0, size-7);
-
-  // Просто закодируем текст как чёрные/белые полосы (имитация)
-  // Для настоящего использования — заменить на qrcode-generator, но для гарантии — так:
-  ctx.fillStyle = '#000';
-  ctx.font = '10px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('КЛЮЧ:', 100, 80);
-  ctx.fillText(text.substring(0, 16), 100, 100);
-  ctx.fillText(text.substring(16, 32), 100, 115);
-  ctx.fillText(text.substring(32, 48), 100, 130);
-  ctx.fillText(text.substring(48), 100, 145);
-}
-
-// Но чтобы всё работало — подключим qrcode-generator через data URL
+// Загрузка QR-библиотеки
 const qrScript = document.createElement('script');
 qrScript.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
-qrScript.onload = () => {
-  window.qrLibLoaded = true;
-  if (window.pendingQRText) {
-    realDrawQR(window.pendingQRText);
-  }
-};
 document.head.appendChild(qrScript);
 
-function realDrawQR(text) {
-  if (!window.qrLibLoaded) {
-    window.pendingQRText = text;
-    return;
-  }
-  const qr = qrcode(0, 'L');
-  qr.addData(text);
-  qr.make();
-  const canvas = document.getElementById('qr-canvas');
-  const ctx = canvas.getContext('2d');
-  const size = qr.getModuleCount();
-  const px = Math.floor(200 / size);
-  ctx.clearRect(0, 0, 200, 200);
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, 200, 200);
-  ctx.fillStyle = '#000';
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      if (qr.isDark(r, c)) {
-        ctx.fillRect(c * px, r * px, px, px);
-      }
-    }
-  }
-}
-
-// === Основной код чата ===
-const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+// DOM
 const roomInput = document.getElementById('room-id');
 const connectBtn = document.getElementById('connect-btn');
 const persistCheckbox = document.getElementById('persist-checkbox');
@@ -269,14 +196,18 @@ const statusDiv = document.getElementById('status');
 const killBtn = document.getElementById('kill-btn');
 const closeQrBtn = document.getElementById('close-qr');
 
+// Глобальное состояние
 let currentTopic = null;
 let aesKey = null;
 let isConnected = false;
 let isKeySet = false;
-let currentKeyHex = '';
 let messageHistory = [];
+let isAutoMode = false; // Флаг: запуск через ссылку
 
-// Вспомогательные функции
+// MQTT
+const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+
+// === Вспомогательные функции ===
 const generateRoomId = () => 'r-' + Math.random().toString(36).substring(2, 10);
 
 const obfuscateData = (room, key) => {
@@ -320,13 +251,12 @@ const addSystemMsg = (text) => {
 };
 
 const saveSession = () => {
-  if (!persistCheckbox.checked) {
+  if (!persistCheckbox.checked || !isConnected) {
     sessionStorage.removeItem('secret-chat-session');
     return;
   }
   sessionStorage.setItem('secret-chat-session', JSON.stringify({
     room: roomInput.value,
-    connected: isConnected,
     messages: messageHistory.map(m => m.raw),
     timestamp: Date.now()
   }));
@@ -368,34 +298,64 @@ const decryptMsg = async (payload) => {
   }
 };
 
-const connectToRoom = async (room) => {
-  currentTopic = `sc-${room}`;
-  client.subscribe(currentTopic);
-  isConnected = true;
-  keyPanel.style.display = 'flex';
-  setStatus(`Подключено: ${room}`);
-  connectBtn.disabled = true;
-  roomInput.disabled = true;
-  saveSession();
+const drawQR = (text) => {
+  if (typeof qrcode !== 'function') return;
+  const qr = qrcode(0, 'L');
+  qr.addData(text);
+  qr.make();
+  const canvas = document.getElementById('qr-canvas');
+  const ctx = canvas.getContext('2d');
+  const size = qr.getModuleCount();
+  const px = Math.min(200 / size, 200 / size);
+  ctx.clearRect(0, 0, 200, 200);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 200, 200);
+  ctx.fillStyle = '#000';
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (qr.isDark(r, c)) {
+        ctx.fillRect(c * px, r * px, px, px);
+      }
+    }
+  }
+};
+
+// === Основные действия ===
+const connectToRoom = (room) => {
+  return new Promise((resolve) => {
+    currentTopic = `sc-${room}`;
+    client.subscribe(currentTopic);
+    isConnected = true;
+    roomInput.value = room;
+    roomInput.disabled = true;
+    connectBtn.disabled = true;
+    keyPanel.style.display = 'flex';
+    setStatus(`Подключено к: ${room}`);
+    resolve();
+  });
 };
 
 const activateKey = async (hex) => {
   const keyBuf = new Uint8Array(hex.match(/.{2}/g).map(b => parseInt(b, 16)));
   aesKey = await crypto.subtle.importKey('raw', keyBuf.buffer, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
   isKeySet = true;
-  currentKeyHex = hex;
 
   keyPanel.style.display = 'none';
   inputArea.style.display = 'block';
   qrArea.style.display = 'block';
   shareArea.style.display = 'block';
-  realDrawQR(`KEY:${hex}`);
+  drawQR(`KEY:${hex}`);
   shareLinkObf.value = `${location.origin}${location.pathname}#${obfuscateData(roomInput.value, hex)}`;
 
   setStatus('✅ Ключ активен. Шифрование включено.');
   addSystemMsg('🔒 Защищённый канал установлен.');
   await loadAndDecryptHistory();
   saveSession();
+
+  // Удаляем хэш ТОЛЬКО после успешной активации
+  if (isAutoMode) {
+    history.replaceState(null, null, ' ');
+  }
 };
 
 const send = async () => {
@@ -413,10 +373,11 @@ const send = async () => {
 const resetChat = () => {
   if (currentTopic) client.publish(currentTopic, 'SYS:WIPE', { qos: 1 });
   aesKey = null;
-  currentKeyHex = '';
   isConnected = false;
   isKeySet = false;
   messageHistory = [];
+  isAutoMode = false;
+  // Сброс UI
   roomInput.disabled = false;
   connectBtn.disabled = false;
   keyPanel.style.display = 'none';
@@ -435,21 +396,58 @@ const copyToClipboard = async (text) => {
     await navigator.clipboard.writeText(text);
     setStatus('✅ Ссылка скопирована!');
   } catch (err) {
-    const input = document.createElement('textarea');
-    input.value = text;
-    document.body.appendChild(input);
-    input.select();
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    document.body.appendChild(ta);
+    ta.select();
     document.execCommand('copy');
-    document.body.removeChild(input);
-    setStatus('✅ Скопировано (через fallback)');
+    document.body.removeChild(ta);
+    setStatus('✅ Скопировано (альтернативный метод)');
   }
 };
 
-// Обработчики
+// === Инициализация ===
+const init = async () => {
+  const hash = location.hash.substring(1);
+  const deobf = deobfuscateData(hash);
+
+  if (deobf) {
+    isAutoMode = true;
+    setStatus('Авто-подключение...');
+    connectBtn.disabled = true;
+    roomInput.disabled = true;
+    await connectToRoom(deobf.room);
+    await activateKey(deobf.key);
+    return;
+  }
+
+  // Загрузка сессии
+  const saved = sessionStorage.getItem('secret-chat-session');
+  if (saved) {
+    try {
+      const s = JSON.parse(saved);
+      if (Date.now() - s.timestamp < 86400000) {
+        roomInput.value = s.room;
+        messageHistory = s.messages.map(m => ({ raw: m }));
+        persistCheckbox.checked = true;
+        // Не подключаем автоматически — ждём нажатия
+        return;
+      }
+    } catch (e) {}
+  }
+
+  if (!roomInput.value) {
+    roomInput.value = generateRoomId();
+  }
+};
+
+// === Обработчики ===
 connectBtn.onclick = () => {
   const room = roomInput.value.trim();
   if (!room) { alert('Введите ID комнаты'); return; }
   connectToRoom(room);
+  saveSession();
 };
 
 genKeyBtn.onclick = () => {
@@ -474,35 +472,9 @@ msgInput.onkeypress = (e) => { if (e.key === 'Enter') send(); };
 killBtn.onclick = resetChat;
 persistCheckbox.onchange = saveSession;
 
-// Инициализация
-window.onload = async () => {
-  const hash = location.hash.substring(1);
-  const deobf = deobfuscateData(hash);
-  if (deobf) {
-    history.replaceState(null, null, ' ');
-    roomInput.value = deobf.room;
-    await connectToRoom(deobf.room);
-    await activateKey(deobf.key);
-    return;
-  }
-
-  const saved = sessionStorage.getItem('secret-chat-session');
-  if (saved) {
-    try {
-      const s = JSON.parse(saved);
-      if (Date.now() - s.timestamp < 86400000) {
-        roomInput.value = s.room;
-        messageHistory = s.messages.map(m => ({ raw: m }));
-        isConnected = s.connected;
-        if (isConnected) {
-          await connectToRoom(s.room);
-        }
-        persistCheckbox.checked = true;
-      }
-    } catch (e) {}
-  }
-
-  if (!roomInput.value) roomInput.value = generateRoomId();
+// Запуск
+window.onload = () => {
+  init();
 };
 
 client.on('message', async (topic, payload) => {
