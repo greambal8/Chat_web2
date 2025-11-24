@@ -657,11 +657,8 @@ const state = {
   selfName: '',
   participants: new Map(), // clientId -> name
   lastMessageTime: 0,
-  sentMessages: new Set(),
-  messageHistory: [],
-  isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
-  mqttClient: null,
-  messageIds: new Set() // Для отслеживания дубликатов
+  messageIds: new Set(), // Для отслеживания дубликатов
+  mqttClient: null
 };
 
 // === СПИСКИ ДЛЯ ГЕНЕРАЦИИ ИМЁН ===
@@ -669,30 +666,34 @@ const nameColors = ['Синий', 'Красный', 'Зелёный', 'Жёлт�
 const nameAnimals = ['Волк', 'Лиса', 'Сова', 'Ястреб', 'Тигр', 'Медведь', 'Леопард', 'Орёл', 'Дракон', 'Феникс', 'Лев', 'Змея', 'Кот', 'Пёс', 'Кролик', 'Лошадь', 'Слон', 'Обезьяна', 'Панда', 'Крокодил', 'Черепаха', 'Кит', 'Акула', 'Осьминог', 'Сокол', 'Ворон', 'Лось', 'Ёж'];
 
 // === DOM ЭЛЕМЕНТЫ ===
-const roomInput = document.getElementById('room-id');
-const connectBtn = document.getElementById('connect-btn');
-const persistCheckbox = document.getElementById('persist-checkbox');
-const keyPanel = document.getElementById('key-panel');
-const keyInput = document.getElementById('key-input');
-const generateKeyBtn = document.getElementById('generate-key-btn');
-const activateKeyBtn = document.getElementById('activate-key-btn');
-const loadFileBtn = document.getElementById('load-file-btn');
-const createFileBtn = document.getElementById('create-file-btn');
-const messagesDiv = document.getElementById('messages');
-const inputArea = document.getElementById('input-area');
-const msgInput = document.getElementById('msg-input');
-const sendBtn = document.getElementById('send-btn');
-const fileInput = document.getElementById('file-input');
-const notification = document.getElementById('notification');
-const menuBtn = document.getElementById('menu-btn');
-const menuPanel = document.getElementById('menu-panel');
-const menuClose = document.getElementById('menu-close');
-const killChatBtn = document.getElementById('kill-chat-btn');
-const participantsCount = document.getElementById('participants-count');
-const lastActivity = document.getElementById('last-activity');
-const encryptionStatus = document.getElementById('encryption-status');
-const clientIdSpan = document.getElementById('client-id');
-const selfNameSpan = document.getElementById('self-name');
+const elements = {
+  roomInput: document.getElementById('room-id'),
+  connectBtn: document.getElementById('connect-btn'),
+  persistCheckbox: document.getElementById('persist-checkbox'),
+  keyPanel: document.getElementById('key-panel'),
+  keyInput: document.getElementById('key-input'),
+  generateKeyBtn: document.getElementById('generate-key-btn'),
+  activateKeyBtn: document.getElementById('activate-key-btn'),
+  loadFileBtn: document.getElementById('load-file-btn'),
+  createFileBtn: document.getElementById('create-file-btn'),
+  messagesDiv: document.getElementById('messages'),
+  inputArea: document.getElementById('input-area'),
+  msgInput: document.getElementById('msg-input'),
+  sendBtn: document.getElementById('send-btn'),
+  fileInput: document.getElementById('file-input'),
+  notification: document.getElementById('notification'),
+  menuBtn: document.getElementById('menu-btn'),
+  menuPanel: document.getElementById('menu-panel'),
+  menuClose: document.getElementById('menu-close'),
+  killChatBtn: document.getElementById('kill-chat-btn'),
+  participantsCount: document.getElementById('participants-count'),
+  lastActivity: document.getElementById('last-activity'),
+  encryptionStatus: document.getElementById('encryption-status'),
+  clientIdSpan: document.getElementById('client-id'),
+  selfNameSpan: document.getElementById('self-name'),
+  statusText: document.getElementById('status-text'),
+  connectionStatus: document.getElementById('connection-status')
+};
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 const utils = {
@@ -751,25 +752,24 @@ const utils = {
   },
   
   updateStatus: (status, isSecure = false) => {
-    document.getElementById('status-text').textContent = status;
-    const connectionStatus = document.getElementById('connection-status');
-    connectionStatus.className = 'status-dot';
+    elements.statusText.textContent = status;
+    elements.connectionStatus.className = 'status-dot';
     
     if (status.includes('Подключено')) {
-      connectionStatus.classList.add('connected');
+      elements.connectionStatus.classList.add('connected');
       if (isSecure) {
-        connectionStatus.classList.add('secure');
+        elements.connectionStatus.classList.add('secure');
       }
     }
   },
   
   showNotification: (message, type = 'info') => {
-    notification.textContent = message;
-    notification.className = `system-notification ${type}`;
-    notification.classList.add('show');
+    elements.notification.textContent = message;
+    elements.notification.className = `system-notification ${type}`;
+    elements.notification.classList.add('show');
     
     setTimeout(() => {
-      notification.classList.remove('show');
+      elements.notification.classList.remove('show');
     }, 3000);
   },
   
@@ -788,15 +788,15 @@ const utils = {
     }
     
     msgDiv.innerHTML = html;
-    messagesDiv.appendChild(msgDiv);
+    elements.messagesDiv.appendChild(msgDiv);
     
     setTimeout(() => {
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
     }, 50);
     
-    lastActivity.textContent = utils.formatTime(timestamp);
-    participantsCount.textContent = state.participants.size;
-    selfNameSpan.textContent = state.selfName;
+    elements.lastActivity.textContent = utils.formatTime(timestamp);
+    elements.participantsCount.textContent = state.participants.size;
+    elements.selfNameSpan.textContent = state.selfName;
   },
   
   addSystemMessage: (text, type = 'normal') => {
@@ -812,21 +812,21 @@ const utils = {
       <div class="message-content">${text}</div>
     `;
     
-    messagesDiv.appendChild(msgDiv);
+    elements.messagesDiv.appendChild(msgDiv);
     
     setTimeout(() => {
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      elements.messagesDiv.scrollTop = elements.messagesDiv.scrollHeight;
     }, 50);
   },
   
   saveSession: () => {
-    if (!persistCheckbox.checked || !state.isConnected) {
+    if (!elements.persistCheckbox.checked || !state.isConnected) {
       sessionStorage.removeItem('secret-chat-session');
       return;
     }
     
     sessionStorage.setItem('secret-chat-session', JSON.stringify({
-      room: roomInput.value,
+      room: elements.roomInput.value,
       selfName: state.selfName,
       participants: Object.fromEntries(state.participants),
       timestamp: Date.now()
@@ -841,7 +841,7 @@ const utils = {
       const s = JSON.parse(saved);
       if (Date.now() - s.timestamp > 86400000) return false;
       
-      roomInput.value = s.room;
+      elements.roomInput.value = s.room;
       state.selfName = s.selfName;
       
       state.participants.clear();
@@ -851,7 +851,7 @@ const utils = {
         });
       }
       
-      persistCheckbox.checked = true;
+      elements.persistCheckbox.checked = true;
       return true;
     } catch (e) {
       return false;
@@ -859,22 +859,22 @@ const utils = {
   },
   
   resetUI: () => {
-    keyPanel.style.display = 'none';
-    createFileBtn.style.display = 'none';
-    inputArea.style.display = 'none';
-    sendBtn.disabled = true;
-    messagesDiv.innerHTML = '';
-    roomInput.disabled = false;
-    connectBtn.disabled = false;
+    elements.keyPanel.style.display = 'none';
+    elements.createFileBtn.style.display = 'none';
+    elements.inputArea.style.display = 'none';
+    elements.sendBtn.disabled = true;
+    elements.messagesDiv.innerHTML = '';
+    elements.roomInput.disabled = false;
+    elements.connectBtn.disabled = false;
     state.participants.clear();
-    participantsCount.textContent = '0';
-    encryptionStatus.textContent = 'Не активно';
+    elements.participantsCount.textContent = '0';
+    elements.encryptionStatus.textContent = 'Не активно';
     state.selfName = '';
-    selfNameSpan.textContent = '-';
+    elements.selfNameSpan.textContent = '-';
   },
   
   adjustInputHeight: () => {
-    const input = msgInput;
+    const input = elements.msgInput;
     input.style.height = 'auto';
     if (input.scrollHeight > 100) {
       input.style.height = '100px';
@@ -981,7 +981,7 @@ const cryptoUtils = {
         ['encrypt', 'decrypt']
       );
       state.isKeySet = true;
-      encryptionStatus.textContent = 'Активно (AES-GCM)';
+      elements.encryptionStatus.textContent = 'Активно (AES-GCM)';
       utils.showNotification('✅ Ключ успешно активирован!', 'secure');
       utils.addSystemMessage('🔒 Шифрование активировано. Все сообщения защищены.', 'secure');
       return true;
@@ -1009,8 +1009,8 @@ const fileUtils = {
     try {
       const data = JSON.stringify({ 
         v: 1, 
-        room: roomInput.value, 
-        key: keyInput.value.trim(),
+        room: elements.roomInput.value, 
+        key: elements.keyInput.value.trim(),
         clientId: state.clientId,
         selfName: state.selfName,
         timestamp: Date.now()
@@ -1057,7 +1057,7 @@ const fileUtils = {
       utils.addSystemMessage('✅ Данные из файла загружены успешно', 'secure');
       
       await chatUtils.connectToRoom(room);
-      keyInput.value = key;
+      elements.keyInput.value = key;
       await cryptoUtils.generateAESKey(key);
       state.isSecureConnection = true;
       
@@ -1091,49 +1091,55 @@ const chatUtils = {
     state.mqttClient.on('connect', () => {
       console.log('MQTT подключен');
       state.mqttClient.subscribe(state.currentTopic, { qos: 1 });
-      utils.updateStatus(`Подключено к: ${roomInput.value}`, state.isSecureConnection);
+      utils.updateStatus(`Подключено к: ${elements.roomInput.value}`, state.isSecureConnection);
       
       setTimeout(() => {
-        chatUtils.sendSystemMessage(`JOIN:${state.clientId}:${state.selfName}`);
+        chatUtils.sendSystemMessage(`SYS:JOIN:${state.clientId}:${state.selfName}`);
       }, 500);
     });
     
-    state.mqttClient.on('message', (topic, payload) => {
+    state.mqttClient.on('message', async (topic, payload) => {
       if (topic !== state.currentTopic) return;
       
-      try {
-        const msg = payload.toString();
-        
-        // Проверка на дубликат
-        if (state.messageIds.has(msg)) {
-          return;
-        }
-        
-        state.messageIds.add(msg);
-        
-        if (msg.startsWith('SYS:')) {
-          const parts = msg.split(':');
-          if (parts[1] === 'JOIN') {
-            const clientId = parts[2];
-            const senderName = parts[3] || utils.generateUniqueName(clientId);
-            
-            if (clientId !== state.clientId) {
-              state.participants.set(clientId, senderName);
-              utils.addSystemMessage(`✅ ${senderName} подключился к чату`, 'secure');
-            }
-          }
-          return;
-        }
-        
-        if (state.isKeySet) {
-          const plain = await cryptoUtils.decryptMsg(msg);
-          utils.addMessage(plain, false, 'Корреспондент', Date.now());
-        } else {
-          utils.addMessage('[🔒 Зашифровано]', false, 'Неизвестный', Date.now());
-        }
-      } catch (e) {
-        console.error('Ошибка обработки сообщения:', e);
+      const msg = payload.toString();
+      
+      // Проверка на дубликат
+      if (state.messageIds.has(msg)) {
+        return;
       }
+      
+      state.messageIds.add(msg);
+      
+      if (msg.startsWith('SYS:')) {
+        const parts = msg.split(':');
+        if (parts[1] === 'JOIN') {
+          const clientId = parts[2];
+          const senderName = parts[3] || utils.generateUniqueName(clientId);
+          
+          if (clientId !== state.clientId) {
+            state.participants.set(clientId, senderName);
+            utils.addMessage(`${senderName} подключился к чату`, false, 'Система', Date.now());
+          }
+        }
+        return;
+      }
+      
+      if (state.isKeySet) {
+        try {
+          const plain = await cryptoUtils.decryptMsg(msg);
+          const [sender, text, messageId] = plain.split(':');
+          utils.addMessage(text, false, sender || 'Корреспондент', Date.now());
+        } catch (e) {
+          utils.addMessage('[❌ Ошибка расшифровки]', false, 'Система', Date.now());
+        }
+      } else {
+        utils.addMessage('[🔒 Зашифровано]', false, 'Неизвестный', Date.now());
+      }
+    });
+    
+    state.mqttClient.on('error', (error) => {
+      console.error('MQTT ошибка:', error);
+      utils.updateStatus('❌ Ошибка подключения', false);
     });
     
     return state.mqttClient;
@@ -1144,10 +1150,10 @@ const chatUtils = {
       state.currentTopic = `sc-${room.replace(/\W/g, '_')}`;
       state.isConnected = true;
       
-      roomInput.value = room;
-      roomInput.disabled = true;
-      connectBtn.disabled = true;
-      keyPanel.style.display = 'flex';
+      elements.roomInput.value = room;
+      elements.roomInput.disabled = true;
+      elements.connectBtn.disabled = true;
+      elements.keyPanel.style.display = 'flex';
       
       chatUtils.initMQTT();
       
@@ -1174,7 +1180,7 @@ const chatUtils = {
       return;
     }
     
-    const text = msgInput.value.trim();
+    const text = elements.msgInput.value.trim();
     if (!text) return;
     
     const timestamp = Date.now();
@@ -1195,8 +1201,8 @@ const chatUtils = {
       
       utils.addMessage(text, true, state.selfName, timestamp, true);
       
-      msgInput.value = '';
-      msgInput.style.height = 'auto';
+      elements.msgInput.value = '';
+      elements.msgInput.style.height = 'auto';
       state.lastMessageTime = timestamp;
       utils.saveSession();
       
@@ -1220,19 +1226,17 @@ const chatUtils = {
     state.isKeySet = false;
     state.isSecureConnection = false;
     state.participants.clear();
-    state.messageHistory = [];
-    state.lastMessageTime = 0;
     state.messageIds.clear();
     
     utils.resetUI();
-    persistCheckbox.checked = false;
+    elements.persistCheckbox.checked = false;
     sessionStorage.removeItem('secret-chat-session');
     localStorage.removeItem('secret-chat-names');
     
-    roomInput.value = utils.generateRoomId();
-    roomInput.disabled = false;
-    connectBtn.disabled = false;
-    clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
+    elements.roomInput.value = utils.generateRoomId();
+    elements.roomInput.disabled = false;
+    elements.connectBtn.disabled = false;
+    elements.clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
     
     utils.updateStatus('Чат уничтожен. Начата новая сессия');
     utils.showNotification('✅ Чат полностью очищен', 'secure');
@@ -1241,21 +1245,28 @@ const chatUtils = {
 
 // === ИНИЦИАЛИЗАЦИЯ ===
 const init = () => {
+  // Проверка поддержки криптографии
   if (!window.crypto || !window.crypto.subtle) {
     alert('Ваш браузер не поддерживает криптографию. Используйте Chrome, Firefox или Edge.');
     return;
   }
   
+  // Генерация уникального имени
   state.selfName = utils.generateUniqueName(state.clientId);
-  selfNameSpan.textContent = state.selfName;
-  clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
+  elements.selfNameSpan.textContent = state.selfName;
+  elements.clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
   
-  msgInput.addEventListener('input', utils.adjustInputHeight);
-  msgInput.addEventListener('focus', utils.adjustInputHeight);
-  
-  if (!utils.loadSession()) {
-    roomInput.value = utils.generateRoomId();
+  // Генерация ID комнаты при загрузке
+  if (!elements.roomInput.value) {
+    elements.roomInput.value = utils.generateRoomId();
   }
+  
+  // Слушатели для поля ввода
+  elements.msgInput.addEventListener('input', utils.adjustInputHeight);
+  elements.msgInput.addEventListener('focus', utils.adjustInputHeight);
+  
+  // Загрузка сессии
+  utils.loadSession();
   
   utils.updateStatus('Готов к подключению');
 };
@@ -1264,8 +1275,9 @@ const init = () => {
 document.addEventListener('DOMContentLoaded', () => {
   init();
   
-  connectBtn.onclick = () => {
-    const room = roomInput.value.trim();
+  // Подключение к комнате
+  elements.connectBtn.onclick = () => {
+    const room = elements.roomInput.value.trim();
     if (!room) {
       utils.showNotification('❌ Укажите ID комнаты', 'danger');
       return;
@@ -1274,13 +1286,15 @@ document.addEventListener('DOMContentLoaded', () => {
     utils.saveSession();
   };
   
-  generateKeyBtn.onclick = () => {
-    keyInput.value = cryptoUtils.generateRandomAESKey();
+  // Генерация ключа
+  elements.generateKeyBtn.onclick = () => {
+    elements.keyInput.value = cryptoUtils.generateRandomAESKey();
     utils.showNotification('✅ Ключ сгенерирован!', 'secure');
   };
   
-  activateKeyBtn.onclick = async () => {
-    const hex = keyInput.value.trim();
+  // Активация ключа
+  elements.activateKeyBtn.onclick = async () => {
+    const hex = elements.keyInput.value.trim();
     if (!hex) {
       utils.showNotification('❌ Введите ключ', 'danger');
       return;
@@ -1288,13 +1302,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     try {
       await cryptoUtils.generateAESKey(hex);
-      keyPanel.style.display = 'none';
-      inputArea.style.display = 'flex';
-      sendBtn.disabled = false;
-      createFileBtn.style.display = 'block';
+      elements.keyPanel.style.display = 'none';
+      elements.inputArea.style.display = 'flex';
+      elements.sendBtn.disabled = false;
+      elements.createFileBtn.style.display = 'block';
       
       setTimeout(() => {
-        msgInput.focus();
+        elements.msgInput.focus();
         utils.adjustInputHeight();
       }, 300);
       
@@ -1304,52 +1318,64 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
   
-  loadFileBtn.onclick = () => {
-    fileInput.click();
+  // Загрузка файла
+  elements.loadFileBtn.onclick = () => {
+    elements.fileInput.click();
   };
   
-  fileInput.onchange = (e) => {
+  elements.fileInput.onchange = async (e) => {
     const file = e.target.files[0];
     if (file && file.name.endsWith('.by')) {
-      fileUtils.loadChristmasFile(file);
-      fileInput.value = '';
+      await fileUtils.loadChristmasFile(file);
+      elements.fileInput.value = '';
     } else {
       utils.showNotification('❌ Выберите файл с расширением .by', 'danger');
     }
   };
   
-  createFileBtn.onclick = fileUtils.createChristmasFile;
+  // Создание файла
+  elements.createFileBtn.onclick = fileUtils.createChristmasFile;
   
-  sendBtn.onclick = chatUtils.send;
+  // Отправка сообщения
+  elements.sendBtn.onclick = chatUtils.send;
   
-  msgInput.onkeypress = (e) => {
+  elements.msgInput.onkeypress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       chatUtils.send();
     }
   };
   
-  menuBtn.onclick = () => {
-    menuPanel.classList.add('open');
+  // Меню
+  elements.menuBtn.onclick = () => {
+    elements.menuPanel.classList.add('open');
   };
   
-  menuClose.onclick = () => {
-    menuPanel.classList.remove('open');
+  elements.menuClose.onclick = () => {
+    elements.menuPanel.classList.remove('open');
   };
   
-  killChatBtn.onclick = () => {
+  elements.killChatBtn.onclick = () => {
     if (confirm('Вы уверены? Это полностью очистит чат и все данные!')) {
       chatUtils.resetChat();
-      menuPanel.classList.remove('open');
+      elements.menuPanel.classList.remove('open');
     }
   };
   
+  // Клик вне меню
   document.addEventListener('click', (e) => {
-    if (menuPanel.classList.contains('open') && 
-        !menuPanel.contains(e.target) && 
-        e.target !== menuBtn && 
-        e.target !== menuClose) {
-      menuPanel.classList.remove('open');
+    if (elements.menuPanel.classList.contains('open') && 
+        !elements.menuPanel.contains(e.target) && 
+        e.target !== elements.menuBtn && 
+        e.target !== elements.menuClose) {
+      elements.menuPanel.classList.remove('open');
+    }
+  });
+  
+  // Закрытие меню при нажатии на Esc
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && elements.menuPanel.classList.contains('open')) {
+      elements.menuPanel.classList.remove('open');
     }
   });
 });
