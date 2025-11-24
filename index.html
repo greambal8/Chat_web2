@@ -658,7 +658,9 @@ const state = {
   participants: new Map(), // clientId -> name
   lastMessageTime: 0,
   messageIds: new Set(), // Для отслеживания дубликатов
-  mqttClient: null
+  mqttClient: null,
+  nameColor: '',
+  nameAnimal: ''
 };
 
 // === СПИСКИ ДЛЯ ГЕНЕРАЦИИ ИМЁН ===
@@ -699,42 +701,53 @@ const elements = {
 const utils = {
   generateRoomId: () => 'room-' + Math.random().toString(36).substring(2, 8),
   
+  generateUniqueNameParts: (clientId) => {
+    // Генерируем уникальные части имени на основе clientId
+    let hash = 0;
+    for (let i = 0; i < clientId.length; i++) {
+      const char = clientId.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    
+    // Используем хеш для выбора цвета и животного
+    const colorIndex = Math.abs(hash) % nameColors.length;
+    const animalIndex = Math.abs(hash * 31) % nameAnimals.length;
+    
+    return {
+      color: nameColors[colorIndex],
+      animal: nameAnimals[animalIndex]
+    };
+  },
+  
   generateUniqueName: (clientId) => {
+    // Проверяем, есть ли имя в localStorage для этого clientId
     const storedNames = utils.getStoredNames();
     if (storedNames[clientId]) {
       return storedNames[clientId];
     }
     
-    let newName;
-    let isUnique = false;
+    // Генерируем уникальные части имени
+    const parts = utils.generateUniqueNameParts(clientId);
     
-    while (!isUnique) {
-      const color = nameColors[Math.floor(Math.random() * nameColors.length)];
-      const animal = nameAnimals[Math.floor(Math.random() * nameAnimals.length)];
-      newName = `${color} ${animal}`;
-      
-      isUnique = true;
-      for (const [id, name] of state.participants) {
-        if (name === newName && id !== clientId) {
-          isUnique = false;
-          break;
-        }
-      }
-      
-      if (isUnique) {
-        for (const savedName of Object.values(storedNames)) {
-          if (savedName === newName) {
-            isUnique = false;
-            break;
-          }
-        }
-      }
-    }
+    // Создаем имя
+    const name = `${parts.color} ${parts.animal}`;
     
-    storedNames[clientId] = newName;
+    // Сохраняем в localStorage
+    storedNames[clientId] = name;
     localStorage.setItem('secret-chat-names', JSON.stringify(storedNames));
     
-    return newName;
+    return name;
+  },
+  
+  generateSelfName: () => {
+    // Генерируем уникальные части для текущего клиента
+    const parts = utils.generateUniqueNameParts(state.clientId);
+    state.nameColor = parts.color;
+    state.nameAnimal = parts.animal;
+    state.selfName = `${parts.color} ${parts.animal}`;
+    elements.selfNameSpan.textContent = state.selfName;
+    return state.selfName;
   },
   
   getStoredNames: () => {
@@ -828,6 +841,7 @@ const utils = {
     sessionStorage.setItem('secret-chat-session', JSON.stringify({
       room: elements.roomInput.value,
       selfName: state.selfName,
+      clientId: state.clientId,
       participants: Object.fromEntries(state.participants),
       timestamp: Date.now()
     }));
@@ -843,6 +857,7 @@ const utils = {
       
       elements.roomInput.value = s.room;
       state.selfName = s.selfName;
+      state.clientId = s.clientId || state.clientId;
       
       state.participants.clear();
       if (s.participants) {
@@ -852,6 +867,9 @@ const utils = {
       }
       
       elements.persistCheckbox.checked = true;
+      elements.selfNameSpan.textContent = state.selfName;
+      elements.clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
+      
       return true;
     } catch (e) {
       return false;
@@ -1051,7 +1069,13 @@ const fileUtils = {
 
       const { room, key, clientId, selfName } = data;
       
+      // Устанавливаем уникальный clientId из файла
+      state.clientId = clientId;
+      elements.clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
+      
+      // Генерируем имя на основе clientId из файла
       state.selfName = selfName || utils.generateUniqueName(state.clientId);
+      elements.selfNameSpan.textContent = state.selfName;
       
       utils.showNotification('✅ Файл успешно загружен!', 'secure');
       utils.addSystemMessage('✅ Данные из файла загружены успешно', 'secure');
@@ -1060,12 +1084,6 @@ const fileUtils = {
       elements.keyInput.value = key;
       await cryptoUtils.generateAESKey(key);
       state.isSecureConnection = true;
-      
-      if (clientId) {
-        const creatorName = utils.generateUniqueName(clientId);
-        state.participants.set(clientId, creatorName);
-        utils.addSystemMessage(`🔒 ${creatorName} — создатель файла (безопасное соединение)`, 'secure');
-      }
       
     } catch (err) {
       utils.showNotification('❌ Ошибка загрузки файла', 'danger');
@@ -1117,8 +1135,11 @@ const chatUtils = {
           const senderName = parts[3] || utils.generateUniqueName(clientId);
           
           if (clientId !== state.clientId) {
-            state.participants.set(clientId, senderName);
-            utils.addMessage(`${senderName} подключился к чату`, false, 'Система', Date.now());
+            // Добавляем участника только если его еще нет
+            if (!state.participants.has(clientId)) {
+              state.participants.set(clientId, senderName);
+              utils.addMessage(`${senderName} подключился к чату`, false, 'Система', Date.now());
+            }
           }
         }
         return;
@@ -1127,8 +1148,12 @@ const chatUtils = {
       if (state.isKeySet) {
         try {
           const plain = await cryptoUtils.decryptMsg(msg);
-          const [sender, text, messageId] = plain.split(':');
-          utils.addMessage(text, false, sender || 'Корреспондент', Date.now());
+          const [senderName, text] = plain.split(':', 2);
+          
+          // Генерируем имя отправителя, если его нет
+          const senderDisplayName = senderName || utils.generateUniqueName('unknown-' + Math.random().toString(36).substring(2, 8));
+          
+          utils.addMessage(text, false, senderDisplayName, Date.now());
         } catch (e) {
           utils.addMessage('[❌ Ошибка расшифровки]', false, 'Система', Date.now());
         }
@@ -1184,8 +1209,7 @@ const chatUtils = {
     if (!text) return;
     
     const timestamp = Date.now();
-    const messageId = `msg-${timestamp}-${Math.random().toString(36).substring(2, 8)}`;
-    const messageData = `${state.selfName}:${text}:${messageId}`;
+    const messageData = `${state.selfName}:${text}`;
     
     try {
       const encrypted = await cryptoUtils.encryptMsg(messageData);
@@ -1233,10 +1257,16 @@ const chatUtils = {
     sessionStorage.removeItem('secret-chat-session');
     localStorage.removeItem('secret-chat-names');
     
+    // Генерируем новый clientId для полной изоляции
+    state.clientId = 'client-' + Math.random().toString(36).substring(2, 10);
+    elements.clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
+    
+    // Генерируем новое уникальное имя
+    utils.generateSelfName();
+    
     elements.roomInput.value = utils.generateRoomId();
     elements.roomInput.disabled = false;
     elements.connectBtn.disabled = false;
-    elements.clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
     
     utils.updateStatus('Чат уничтожен. Начата новая сессия');
     utils.showNotification('✅ Чат полностью очищен', 'secure');
@@ -1251,10 +1281,12 @@ const init = () => {
     return;
   }
   
-  // Генерация уникального имени
-  state.selfName = utils.generateUniqueName(state.clientId);
-  elements.selfNameSpan.textContent = state.selfName;
+  // Генерация уникального имени для текущего пользователя
+  utils.generateSelfName();
+  
+  // Отображение ID и имени
   elements.clientIdSpan.textContent = state.clientId.substring(0, 12) + '...';
+  elements.selfNameSpan.textContent = state.selfName;
   
   // Генерация ID комнаты при загрузке
   if (!elements.roomInput.value) {
@@ -1266,7 +1298,10 @@ const init = () => {
   elements.msgInput.addEventListener('focus', utils.adjustInputHeight);
   
   // Загрузка сессии
-  utils.loadSession();
+  if (!utils.loadSession()) {
+    // Если нет сохраненной сессии, генерируем новое имя
+    utils.generateSelfName();
+  }
   
   utils.updateStatus('Готов к подключению');
 };
